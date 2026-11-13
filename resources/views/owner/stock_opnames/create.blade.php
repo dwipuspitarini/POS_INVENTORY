@@ -4,25 +4,16 @@
 @section('page-title', 'Penyesuaian Produk')
 
 @section('content')
-<div class="container stock-opname-page">
+<div class="container-fluid stock-opname-page">
 
-    @if ($errors->any())
-        <div class="alert alert-danger mb-4" style="border-radius: 8px;">
-            <strong>Periksa kembali data berikut:</strong>
-            <ul class="mb-0 mt-2">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
-    {{-- =========================
-        HEADER
-    ========================== --}}
-    <div class="page-header">
+    {{-- =========================================================
+         HEADER
+    ========================================================== --}}
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap mb-4" style="gap: 12px;">
         <div>
-            <h1> </h1>
+            <h1 style="font-size: 26px; font-weight: 700; color: #1f2937; margin-bottom: 6px;">
+                Penyesuaian Produk
+            </h1>
         </div>
 
         <a href="{{ route('owner.stock-opnames.index') }}" class="btn btn-secondary">
@@ -30,76 +21,96 @@
         </a>
     </div>
 
+    {{-- =========================================================
+         ERROR VALIDASI
+    ========================================================== --}}
+    @if ($errors->any())
+        <div class="alert alert-danger mb-4" style="border-radius: 8px; font-size: 15px;">
+            <strong>Periksa kembali data berikut:</strong>
+            <ul style="margin: 8px 0 0 20px;">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <form action="{{ route('owner.stock-opnames.store') }}" method="POST" id="form-stock-opname">
         @csrf
 
-        {{-- =========================
-            INFORMASI OPNAME
-        ========================== --}}
+        {{-- =========================================================
+             INFORMASI PENYESUAIAN PRODUK
+        ========================================================== --}}
         <div class="form-card mb-20">
-            <div class="section-title">
+            <div class="section-title mb-4">
                 Informasi Penyesuaian Produk
             </div>
 
-            <div class="stock-info-grid">
-                {{-- TANGGAL OPNAME --}}
-                <div class="form-group">
-                    <label for="tanggal_opname" class="form-label">
-                        Tanggal Penyesuaian Produk <span class="required">*</span>
-                    </label>
-                    <input type="date"
-                           name="tanggal_opname"
-                           id="tanggal_opname"
-                           class="form-control"
-                           value="{{ old('tanggal_opname', date('Y-m-d')) }}"
-                           required>
+            <div class="stock-info-grid mb-20">
+                {{-- PETUGAS (KIRI) --}}
+                <div class="form-group mb-0">
+                    <label class="form-label">Petugas</label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        value="{{ auth()->user()->name ?? 'Petugas login' }}"
+                        readonly
+                        style="background-color: #f9fafb; color: #4b5563;"
+                    >
                 </div>
 
-                {{-- PETUGAS --}}
-                <div class="form-group">
-                    <label class="form-label">Petugas</label>
-                    <input type="text"
-                           class="form-control"
-                           value="{{ auth()->user()->name ?? 'Petugas login' }}"
-                           readonly
-                           style="background-color: #f9fafb;">
+                {{-- TANGGAL & WAKTU OPNAME (KANAN) --}}
+                <div class="form-group mb-0">
+                    <label for="tanggal_opname" class="form-label">
+                        Tanggal Penyesuaian <span class="required">*</span>
+                    </label>
+                    <input
+                        type="datetime-local"
+                        name="tanggal_opname"
+                        id="tanggal_opname"
+                        class="form-control"
+                        value="{{ old('tanggal_opname') }}"
+                        required
+                    >
                 </div>
             </div>
 
             {{-- KETERANGAN UMUM --}}
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group mb-0">
                 <label for="keterangan" class="form-label">
                     Keterangan Umum
                 </label>
-                <textarea name="keterangan"
-                          id="keterangan"
-                          class="form-control"
-                          rows="3"
-                          maxlength="1000">{{ old('keterangan') }}</textarea>
+                <textarea
+                    name="keterangan"
+                    id="keterangan"
+                    class="form-control"
+                    rows="3"
+                    maxlength="1000"
+                >{{ old('keterangan') }}</textarea>
             </div>
         </div>
 
-        {{-- =========================
-            PILIH PRODUK
-        ========================== --}}
+        {{-- =========================================================
+             CARI PRODUK (INSTANT SEARCH)
+        ========================================================== --}}
         <div class="form-card mb-20">
-            <div class="section-title">
-                Cari Produk
+            <div class="section-title mb-4">
+                Tambah Produk ke Daftar Penyesuaian
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group mb-0">
                 <label for="cari_produk" class="form-label">
-                    Produk
+                    Cari Produk
                 </label>
 
-                <div class="product-search-wrapper">
+                <div class="product-search-wrapper" id="product-search-wrapper">
                     <div class="product-search-box">
                         <span class="search-icon">🔍</span>
-                        <input type="text"
-                               id="cari_produk"
-                               class="form-control"
-                               autocomplete="off"
-                               placeholder="Ketik nama produk atau SKU...">
+                        <input
+                            type="text"
+                            id="cari_produk"
+                            class="form-control"
+                            autocomplete="off">
                     </div>
 
                     <div id="hasil-pencarian" class="product-results"></div>
@@ -107,45 +118,52 @@
             </div>
         </div>
 
-        {{-- =========================
-            TABEL PRODUK TERPILIH
-        ========================== --}}
+        {{-- =========================================================
+             TABEL PRODUK TERPILIH
+        ========================================================== --}}
         <div class="table-card mb-20">
-            <div class="table-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>SKU</th>
-                            <th>Nama Produk</th>
-                            <th>Satuan</th>
-                            <th style="text-align: center;">Stok Sistem</th>
-                            <th style="width: 150px;">Stok Fisik</th>
-                            <th style="text-align: center; width: 110px;">Selisih</th>
-                            <th style="width: 200px;">Keterangan</th>
-                            <th style="text-align: center; width: 80px;">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody id="produk-terpilih">
-                        <tr id="baris-kosong">
-                            <td colspan="8" class="empty-cart">
-                                Belum ada produk. Cari dan tambahkan produk terlebih dahulu.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="card-body-wrapper" style="padding: 20px;">
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 110px;">SKU</th>
+                                <th>Nama Produk</th>
+                                <th style="width: 90px;">Satuan</th>
+                                <th style="width: 115px; text-align: center;">Stok Sistem</th>
+                                <th style="width: 130px; text-align: center;">Stok Fisik</th>
+                                <th style="width: 100px; text-align: center;">Selisih</th>
+                                <th style="width: 220px;">Keterangan</th>
+                                <th style="width: 90px; text-align: center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="produk-terpilih">
+                            <tr id="baris-kosong">
+                                <td colspan="8" class="empty-cart">
+                                    Belum ada produk. Ketik nama produk atau SKU pada kolom pencarian di atas.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        {{-- =========================
-            TOMBOL AKSI
-        ========================== --}}
+        {{-- =========================================================
+             TOMBOL AKSI
+        ========================================================== --}}
         <div class="form-card">
-            <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+            <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
                 <a href="{{ route('owner.stock-opnames.index') }}" class="btn btn-secondary">
                     Batal
                 </a>
-                <button type="submit" class="btn btn-primary" id="tombol-simpan">
-                    Simpan
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    id="tombol-simpan"
+                    style="background: #1f2937; border-color: #1f2937;"
+                >
+                    Simpan Penyesuaian
                 </button>
             </div>
         </div>
@@ -154,10 +172,6 @@
 
 @push('styles')
 <style>
-/* =========================================================
-   REQUIRED & BASIC SPACING
-========================================================= */
-
 .stock-opname-page .mb-20 {
     margin-bottom: 20px;
 }
@@ -167,13 +181,27 @@
 }
 
 /* =========================================================
-   STOCK INFORMATION & GRID
+   FORM CARD & GRID (FONT SERAGAM 15px)
 ========================================================= */
+.form-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 24px;
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f3f4f6;
+}
 
 .stock-info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 25px;
+    gap: 20px;
 }
 
 .form-group {
@@ -183,30 +211,33 @@
 .form-label {
     display: block;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 15px;
     color: #374151;
     margin-bottom: 8px;
 }
 
 .form-control {
     width: 100%;
-    padding: 10px 14px;
-    font-size: 14px;
+    padding: 11px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    color: #1f2937;
+    background-color: #ffffff;
     border: 1px solid #d1d5db;
     border-radius: 6px;
     box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-control:focus {
-    border-color: #3b82f6;
+    border-color: #1f2937;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.12);
 }
 
 /* =========================================================
-   PRODUCT SEARCH & DROPDOWN
+   PRODUCT SEARCH & DROPDOWN (INSTANT CLICK)
 ========================================================= */
-
 .product-search-wrapper {
     position: relative;
 }
@@ -216,16 +247,20 @@
 }
 
 .product-search-box .form-control {
-    padding-left: 45px;
+    padding-left: 42px;
+    height: 44px;
+    font-size: 15px;
 }
 
 .search-icon {
     position: absolute;
-    left: 15px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 17px;
+    font-size: 16px;
+    color: #6b7280;
     z-index: 2;
+    pointer-events: none;
 }
 
 .product-results {
@@ -236,21 +271,18 @@
     background: #ffffff;
     border: 1px solid #d1d5db;
     border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.10);
-    max-height: 300px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    max-height: 280px;
     overflow-y: auto;
-    z-index: 100;
+    z-index: 200;
     display: none;
 }
 
 .search-results-item {
-    padding: 13px 15px;
+    padding: 12px 16px;
     cursor: pointer;
-    border-bottom: 1px solid #eeeeee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.12s ease;
 }
 
 .search-results-item:last-child {
@@ -258,16 +290,86 @@
 }
 
 .search-results-item:hover {
-    background: #f3f6fb;
+    background: #f3f4f6;
+}
+
+.result-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: #1f2937;
+}
+
+.result-sub {
+    font-size: 14px;
+    color: #6b7280;
+    margin-top: 3px;
 }
 
 /* =========================================================
-   TABLE & BADGES
+   TABLE & BADGES (FONT SERAGAM 15px)
 ========================================================= */
+.table-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table-card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    background-color: #ffffff;
+}
+
+.table-card-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 0;
+}
+
+.count-badge {
+    background-color: #f3f4f6;
+    color: #374151;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    padding: 13px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #374151;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 13px 12px;
+    font-size: 15px;
+    color: #1f2937;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+}
 
 .empty-cart {
     text-align: center;
-    padding: 35px !important;
+    padding: 40px 20px !important;
+    font-size: 15px;
     color: #6b7280;
 }
 
@@ -275,44 +377,57 @@
     display: inline-block;
     padding: 4px 12px;
     border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 700;
 }
 
 .stock-available { background: #d1fae5; color: #065f46; }
-.stock-low { background: #fef3c7; color: #92400e; }
 .stock-empty { background: #fee2e2; color: #991b1b; }
 .stock-neutral { background: #f3f4f6; color: #374151; }
 
-.data-table input.form-control {
-    padding: 6px 10px;
-    font-size: 13px;
-    height: auto;
+.data-table input.form-control,
+.table-input {
+    height: 42px;
+    padding: 8px 12px;
+    font-size: 15px !important;
+    margin: 0;
+}
+
+.physical-stock-input {
+    width: 95px;
+    text-align: center;
+    font-weight: 600;
+    margin: 0 auto;
+    display: block;
 }
 
 /* =========================================================
    RESPONSIVE
 ========================================================= */
-
 @media (max-width: 800px) {
     .stock-info-grid {
         grid-template-columns: 1fr;
-        gap: 0;
-    }
-
-    .table-wrapper {
-        overflow-x: auto;
-    }
-
-    .data-table {
-        min-width: 900px;
+        gap: 16px;
     }
 }
 </style>
 @endpush
 
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Sinkronisasi tanggal & waktu lokal perangkat (YYYY-MM-DDTHH:mm)
+    const tanggalInput = document.getElementById('tanggal_opname');
+    if (tanggalInput && !tanggalInput.value) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        tanggalInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
     const products = {{ Illuminate\Support\Js::from(
         $products->map(fn ($product) => [
             'id' => $product->id,
@@ -327,35 +442,48 @@ document.addEventListener('DOMContentLoaded', function () {
     const results = document.getElementById('hasil-pencarian');
     const selectedBody = document.getElementById('produk-terpilih');
     const countLabel = document.getElementById('jumlah-produk');
-    const emptyRow = document.getElementById('baris-kosong');
     const form = document.getElementById('form-stock-opname');
     const saveButton = document.getElementById('tombol-simpan');
 
     const selected = new Set();
 
     function updateCount() {
-    const emptyRow = document.getElementById('baris-kosong');
+        const emptyRow = document.getElementById('baris-kosong');
 
-    if (countLabel) {
-        countLabel.textContent = selected.size + ' produk terpilih';
+        if (countLabel) {
+            countLabel.textContent = selected.size + ' produk terpilih';
+        }
+
+        if (emptyRow) {
+            emptyRow.hidden = selected.size > 0;
+        }
     }
 
-    if (emptyRow) {
-        emptyRow.hidden = selected.size > 0;
-    }
-}
+    function addProductInstant(product) {
+        const productKey = String(product.id);
 
-    function addProduct(product) {
-        if (selected.has(String(product.id))) return;
+        // Jika produk sudah ada di tabel, fokuskan ke input stok fisik produk tersebut
+        if (selected.has(productKey)) {
+            const existingRow = selectedBody.querySelector(`tr[data-product-id="${productKey}"]`);
+            if (existingRow) {
+                const existingInput = existingRow.querySelector('.physical-stock-input');
+                if (existingInput) {
+                    existingInput.focus();
+                    existingInput.select();
+                }
+            }
+            searchInput.value = '';
+            results.style.display = 'none';
+            return;
+        }
 
-        selected.add(String(product.id));
+        selected.add(productKey);
 
         const row = document.createElement('tr');
-        row.dataset.productId = product.id;
+        row.dataset.productId = productKey;
 
         function cell(text) {
             const td = document.createElement('td');
-            td.style.padding = '10px 12px';
             td.textContent = text ?? '-';
             return td;
         }
@@ -374,19 +502,30 @@ document.addEventListener('DOMContentLoaded', function () {
         // Stok Sistem
         const systemStock = cell(String(product.stok));
         systemStock.style.textAlign = 'center';
+        systemStock.style.fontWeight = '600';
         row.appendChild(systemStock);
 
         // Input Stok Fisik
         const physicalCell = cell('');
+        physicalCell.style.textAlign = 'center';
+
         const physicalInput = document.createElement('input');
         physicalInput.type = 'number';
         physicalInput.name = `details[${product.id}][stok_fisik]`;
-        physicalInput.className = 'form-control';
+        physicalInput.className = 'form-control table-input physical-stock-input';
         physicalInput.min = '0';
         physicalInput.step = '1';
         physicalInput.required = true;
         physicalInput.value = String(product.stok);
         physicalInput.setAttribute('aria-label', 'Stok fisik ' + product.nama);
+
+        // Auto-block angka saat diklik/fokus
+        physicalInput.addEventListener('focus', function () {
+            this.select();
+        });
+        physicalInput.addEventListener('mouseup', function (e) {
+            e.preventDefault();
+        });
 
         const productIdInput = document.createElement('input');
         productIdInput.type = 'hidden';
@@ -433,9 +572,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const noteInput = document.createElement('input');
         noteInput.type = 'text';
         noteInput.name = `details[${product.id}][keterangan]`;
-        noteInput.className = 'form-control';
+        noteInput.className = 'form-control table-input';
         noteInput.maxLength = 1000;
-        noteInput.placeholder = 'Opsional';
         noteInput.setAttribute('aria-label', 'Keterangan ' + product.nama);
         noteCell.appendChild(noteInput);
         row.appendChild(noteCell);
@@ -447,13 +585,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const removeButton = document.createElement('button');
         removeButton.type = 'button';
         removeButton.className = 'btn btn-danger btn-sm';
-        removeButton.style.padding = '4px 8px';
-        removeButton.style.fontSize = '12px';
+        removeButton.style.padding = '6px 12px';
+        removeButton.style.fontSize = '13px';
+        removeButton.style.fontWeight = '600';
+        removeButton.style.borderRadius = '6px';
         removeButton.textContent = 'Hapus';
         removeButton.addEventListener('click', function () {
-            selected.delete(String(product.id));
+            selected.delete(productKey);
             row.remove();
             updateCount();
+            searchInput.focus();
         });
 
         actionCell.appendChild(removeButton);
@@ -461,6 +602,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         selectedBody.appendChild(row);
         updateCount();
+
+        // Bersihkan search & kembalikan kursor ke kotak pencarian
+        searchInput.value = '';
+        results.style.display = 'none';
+        searchInput.focus();
     }
 
     function renderResults(keyword) {
@@ -474,12 +620,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const matches = products.filter(function (product) {
             const searchable = (product.sku + ' ' + product.nama).toLowerCase();
             return searchable.includes(keyword);
-        }).slice(0, 10);
+        }).slice(0, 12);
 
         if (matches.length === 0) {
             const item = document.createElement('div');
-            item.className = 'search-results-item text-muted';
-            item.style.fontSize = '14px';
+            item.style.padding = '14px 16px';
+            item.style.color = '#6b7280';
+            item.style.fontSize = '15px';
+            item.style.textAlign = 'center';
             item.textContent = 'Produk tidak ditemukan.';
             results.appendChild(item);
             results.style.display = 'block';
@@ -487,36 +635,26 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         matches.forEach(function (product) {
+            const isAdded = selected.has(String(product.id));
             const item = document.createElement('div');
             item.className = 'search-results-item';
 
-            const info = document.createElement('div');
-            const name = document.createElement('div');
-            name.style.fontWeight = '600';
-            name.style.fontSize = '14px';
-            name.style.color = '#1f2937';
-            name.textContent = product.nama;
+            const title = document.createElement('div');
+            title.className = 'result-title';
+            title.textContent = (product.sku && product.sku !== '-' ? product.sku + ' — ' : '') + product.nama;
 
-            const detail = document.createElement('small');
-            detail.className = 'text-muted';
-            detail.textContent = 'SKU: ' + product.sku + ' · Stok sistem: ' + product.stok + ' ' + product.satuan;
+            const sub = document.createElement('div');
+            sub.className = 'result-sub';
+            sub.innerHTML = `Stok sistem: <strong>${product.stok} ${product.satuan}</strong>` +
+                (isAdded ? ' · <span style="color: #065f46; font-weight: 600;">Sudah di daftar</span>' : '');
 
-            info.appendChild(name);
-            info.appendChild(detail);
+            item.appendChild(title);
+            item.appendChild(sub);
 
-            const addButton = document.createElement('button');
-            addButton.type = 'button';
-            addButton.className = selected.has(String(product.id)) ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-primary';
-            addButton.textContent = selected.has(String(product.id)) ? 'Sudah Ada' : 'Tambahkan';
-            addButton.disabled = selected.has(String(product.id));
-
-            addButton.addEventListener('click', function () {
-                addProduct(product);
-                renderResults(searchInput.value.trim().toLowerCase());
+            item.addEventListener('click', function () {
+                addProductInstant(product);
             });
 
-            item.appendChild(info);
-            item.appendChild(addButton);
             results.appendChild(item);
         });
 
@@ -528,7 +666,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.addEventListener('click', function (e) {
-        if (!searchInput.contains(e.target) && !results.contains(e.target)) {
+        if (!e.target.closest('#product-search-wrapper')) {
             results.style.display = 'none';
         }
     });
@@ -536,7 +674,7 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('submit', function (event) {
         if (selected.size === 0) {
             event.preventDefault();
-            alert('Tambahkan minimal satu produk sebelum menyimpan stok opname.');
+            alert('Tambahkan minimal satu produk sebelum menyimpan penyesuaian.');
             searchInput.focus();
             return;
         }
@@ -548,4 +686,5 @@ document.addEventListener('DOMContentLoaded', function () {
     updateCount();
 });
 </script>
+@endpush
 @endsection

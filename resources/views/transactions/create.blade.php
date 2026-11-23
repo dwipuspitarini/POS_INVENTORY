@@ -113,8 +113,8 @@
                         name="tanggal_transaksi"
                         class="form-control"
                         value="{{ old('tanggal_transaksi') }}"
-                        min="2026-09-01T00:00"
-                        max="2026-09-30T23:59"
+                        min="2026-10-01T00:00"
+                        max="2026-10-31T23:59"
                         required
                     >
                 </div>
@@ -150,8 +150,6 @@
                 <div id="product-results" class="custom-dropdown-results"></div>
             </div>
         </div>
-
-        <div id="product-error" class="form-error mt-2" style="display: none;"></div>
     </div>
 
     {{-- =========================================================
@@ -255,10 +253,10 @@
                 </div>
             </div>
 
-            {{-- JUMLAH BAYAR --}}
+            {{-- JUMLAH PEMBAYARAN YANG DICATAT KE TRANSAKSI --}}
             <div class="form-group">
                 <label for="jumlah_bayar" class="form-label">
-                    Jumlah Bayar (Rp)
+                    Jumlah Pembayaran (Rp)
                 </label>
                 <input
                     type="number"
@@ -266,7 +264,24 @@
                     name="jumlah_bayar"
                     class="form-control auto-select-number"
                     min="0"
+                    step="0.01"
                     value="{{ old('jumlah_bayar', 0) }}"
+                >
+            </div>
+
+            {{-- UANG TUNAI YANG DITERIMA --}}
+            <div class="form-group" id="uang-diterima-wrapper">
+                <label for="uang_diterima" class="form-label">
+                    Uang Diterima (Rp)
+                </label>
+                <input
+                    type="number"
+                    id="uang_diterima"
+                    name="uang_diterima"
+                    class="form-control auto-select-number"
+                    min="0"
+                    step="0.01"
+                    value="{{ old('uang_diterima', 0) }}"
                 >
             </div>
 
@@ -372,6 +387,17 @@
     border-color: #1f2937;
     outline: none;
     box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.12);
+}
+
+/* Hilangkan panah atas-bawah (spinner) pada input Diskon & Jumlah Bayar */
+.auto-select-number::-webkit-outer-spin-button,
+.auto-select-number::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.auto-select-number {
+    -moz-appearance: textfield;
 }
 
 .form-help {
@@ -554,12 +580,24 @@
     border-radius: 6px;
     margin: 0 auto;
     display: block;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .cart-quantity:focus {
     border-color: #1f2937;
     outline: none;
     box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.12);
+}
+
+/* Status merah ketika jumlah melebihi stok tersedia */
+.cart-quantity.over-stock {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+}
+
+.cart-quantity.over-stock:focus {
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18) !important;
 }
 
 /* =========================================================
@@ -593,6 +631,13 @@
     padding: 16px;
 }
 
+/* Jumlah pembayaran otomatis saat status lunas */
+.payment-readonly {
+    background-color: #e5e7eb !important;
+    color: #6b7280 !important;
+    cursor: not-allowed;
+}
+
 @media (max-width: 992px) {
     .transaction-bottom-grid,
     .info-grid-2 {
@@ -607,13 +652,15 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     let cart = [];
+    let isManualBayar = false;
+    let isManualUangDiterima = {{ old('uang_diterima') !== null ? 'true' : 'false' }};
     const products = @json($products);
 
     function formatRupiah(number) {
         return 'Rp ' + new Intl.NumberFormat('id-ID').format(number || 0);
     }
 
-    // Auto-select angka saat diklik/fokus pada diskon & jumlah bayar
+    // Auto-select angka saat diklik/fokus & cegah perubahan angka saat scroll mouse
     document.querySelectorAll('.auto-select-number').forEach(function (el) {
         el.addEventListener('focus', function () {
             this.select();
@@ -621,6 +668,9 @@ document.addEventListener('DOMContentLoaded', function () {
         el.addEventListener('mouseup', function (e) {
             e.preventDefault();
         });
+        el.addEventListener('wheel', function (e) {
+            e.preventDefault();
+        }, { passive: false });
     });
 
     // =========================
@@ -632,7 +682,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const day = String(now.getDate()).padStart(2, '0');
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
-        tanggalTransaksiInput.value = `2026-09-${day}T${hours}:${minutes}`;
+        tanggalTransaksiInput.value = `2026-10-${day}T${hours}:${minutes}`;
     }
 
     // =========================
@@ -716,6 +766,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const cartBody = document.getElementById('cart-body');
     const diskonInput = document.getElementById('diskon');
     const jumlahBayarInput = document.getElementById('jumlah_bayar');
+    const uangDiterimaInput = document.getElementById('uang_diterima');
+    const uangDiterimaWrapper = document.getElementById('uang-diterima-wrapper');
+    const metodePembayaran = document.getElementById('metode_pembayaran');
     const statusPembayaran = document.getElementById('status_pembayaran');
     const transactionForm = document.getElementById('transaction-form');
     const cartData = document.getElementById('cart-data');
@@ -726,7 +779,6 @@ document.addEventListener('DOMContentLoaded', function () {
     productSearch.addEventListener('input', function () {
         const keyword = this.value.trim().toLowerCase();
         productResults.innerHTML = '';
-        showProductError('');
 
         if (!keyword) {
             productResults.style.display = 'none';
@@ -776,26 +828,13 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function addProductInstant(product) {
-        showProductError('');
-
         const harga = parseFloat(product.harga_jual ?? product.harga ?? 0);
         const stok = parseInt(product.stok ?? 0, 10);
-
-        if (stok < 1) {
-            showProductError(`Stok untuk produk "${product.nama}" sedang habis.`);
-            productSearch.focus();
-            return;
-        }
 
         const existingProduct = cart.find(item => item.product_id == product.id);
 
         if (existingProduct) {
             const newQuantity = existingProduct.quantity + 1;
-            if (newQuantity > stok) {
-                showProductError(`Jumlah melebihi stok tersedia (${stok}) untuk produk "${product.nama}".`);
-                productSearch.focus();
-                return;
-            }
             existingProduct.quantity = newQuantity;
             existingProduct.subtotal = existingProduct.harga * newQuantity;
         } else {
@@ -809,6 +848,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 stok: stok
             });
         }
+
+        isManualBayar = false;
 
         productSearch.value = '';
         productResults.style.display = 'none';
@@ -831,11 +872,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     </td>
                 </tr>
             `;
+            isManualBayar = false;
             updateSummary();
             return;
         }
 
         cart.forEach(function (item, index) {
+            const isOverStock = item.quantity > item.stok;
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${index + 1}</td>
@@ -850,9 +893,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     <input
                         type="number"
                         min="1"
-                        max="${item.stok}"
                         value="${item.quantity}"
-                        class="cart-quantity"
+                        class="cart-quantity ${isOverStock ? 'over-stock' : ''}"
                         data-index="${index}"
                     >
                 </td>
@@ -875,12 +917,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // AUTO-BLOCK ANGKA SAAT FOKUS & UPDATE REAL-TIME
         document.querySelectorAll('.cart-quantity').forEach(function (input) {
-            // Langsung blok seluruh angka ketika diklik atau diarahkan fokusnya
             input.addEventListener('focus', function () {
                 this.select();
             });
 
-            // Mencegah klik mouse membatalkan seleksi teks pada browser berbasis Chromium/WebKit
             input.addEventListener('mouseup', function (e) {
                 e.preventDefault();
             });
@@ -891,13 +931,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (isNaN(qty) || qty < 1) {
                     qty = 0;
-                } else if (qty > cart[index].stok) {
-                    showProductError(`Stok tidak mencukupi untuk "${cart[index].nama}". Maksimal: ${cart[index].stok}`);
-                    qty = cart[index].stok;
-                    this.value = qty;
-                    this.select();
+                }
+
+                // Tandai merah jika melebihi stok tanpa mengubah angka ketikan
+                if (qty > cart[index].stok) {
+                    this.classList.add('over-stock');
                 } else {
-                    showProductError('');
+                    this.classList.remove('over-stock');
                 }
 
                 cart[index].quantity = qty;
@@ -908,6 +948,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     subtotalCell.textContent = formatRupiah(cart[index].subtotal);
                 }
 
+                isManualBayar = false;
                 updateSummary();
             });
 
@@ -920,6 +961,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     this.value = 1;
                 }
 
+                if (qty > cart[index].stok) {
+                    this.classList.add('over-stock');
+                } else {
+                    this.classList.remove('over-stock');
+                }
+
                 cart[index].quantity = qty;
                 cart[index].subtotal = cart[index].harga * qty;
 
@@ -928,6 +975,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     subtotalCell.textContent = formatRupiah(cart[index].subtotal);
                 }
 
+                isManualBayar = false;
                 updateSummary();
             });
         });
@@ -937,6 +985,7 @@ document.addEventListener('DOMContentLoaded', function () {
             button.addEventListener('click', function () {
                 const index = parseInt(this.dataset.index, 10);
                 cart.splice(index, 1);
+                isManualBayar = false;
                 renderCart();
                 productSearch.focus();
             });
@@ -958,20 +1007,28 @@ document.addEventListener('DOMContentLoaded', function () {
         const total = getTotal();
         let diskon = parseFloat(diskonInput.value) || 0;
 
-        if (diskon < 0) {
-            diskon = 0;
-        }
-
+        if (diskon < 0) diskon = 0;
         if (diskon > total) {
             diskon = total;
             diskonInput.value = total;
         }
 
-        const totalAkhir = total - diskon;
+        const totalAkhir = Math.max(total - diskon, 0);
 
         document.getElementById('display-total').textContent = formatRupiah(total);
         document.getElementById('display-total-akhir').textContent = formatRupiah(totalAkhir);
         document.getElementById('payment-total').textContent = formatRupiah(totalAkhir);
+
+        if (statusPembayaran.value === 'lunas') {
+            jumlahBayarInput.value = totalAkhir;
+            isManualBayar = false;
+        } else if (!isManualBayar && !jumlahBayarInput.value) {
+            jumlahBayarInput.value = 0;
+        }
+
+        if (!isManualUangDiterima) {
+            uangDiterimaInput.value = jumlahBayarInput.value || 0;
+        }
 
         updatePayment();
     }
@@ -980,35 +1037,65 @@ document.addEventListener('DOMContentLoaded', function () {
         const total = getTotal();
         const diskon = parseFloat(diskonInput.value) || 0;
         const totalAkhir = Math.max(total - diskon, 0);
-        const jumlahBayar = parseFloat(jumlahBayarInput.value) || 0;
+        const jumlahBayar = Math.max(parseFloat(jumlahBayarInput.value) || 0, 0);
+        const metode = metodePembayaran.value;
+
+        jumlahBayarInput.readOnly = statusPembayaran.value === 'lunas';
+
+        jumlahBayarInput.classList.toggle(
+            'payment-readonly',
+            statusPembayaran.value === 'lunas'
+        );
 
         let kembalian = 0;
-        let sisa = 0;
+        const sisa = Math.max(totalAkhir - jumlahBayar, 0);
 
-        if (jumlahBayar >= totalAkhir) {
-            kembalian = jumlahBayar - totalAkhir;
+        if (metode === 'tunai') {
+            uangDiterimaWrapper.style.display = 'block';
+            const uangDiterima = Math.max(parseFloat(uangDiterimaInput.value) || 0, 0);
+            kembalian = Math.max(uangDiterima - jumlahBayar, 0);
         } else {
-            sisa = totalAkhir - jumlahBayar;
+            uangDiterimaWrapper.style.display = 'none';
         }
 
         document.getElementById('display-kembalian').textContent = formatRupiah(kembalian);
         document.getElementById('display-sisa').textContent = formatRupiah(sisa);
     }
 
-    diskonInput.addEventListener('input', updateSummary);
-    jumlahBayarInput.addEventListener('input', updatePayment);
-    statusPembayaran.addEventListener('change', updatePayment);
+    diskonInput.addEventListener('input', function () {
+        updateSummary();
+    });
 
-    function showProductError(message) {
-        const error = document.getElementById('product-error');
-        if (!message) {
-            error.style.display = 'none';
-            error.textContent = '';
-            return;
+    jumlahBayarInput.addEventListener('input', function () {
+        isManualBayar = true;
+        if (!isManualUangDiterima) {
+            uangDiterimaInput.value = this.value || 0;
         }
-        error.textContent = message;
-        error.style.display = 'block';
-    }
+        updatePayment();
+    });
+
+    uangDiterimaInput.addEventListener('input', function () {
+        isManualUangDiterima = true;
+        updatePayment();
+    });
+
+    metodePembayaran.addEventListener('change', function () {
+        updatePayment();
+    });
+
+    statusPembayaran.addEventListener('change', function () {
+        isManualBayar = false;
+        isManualUangDiterima = false;
+
+        if (this.value === 'lunas') {
+            jumlahBayarInput.value = Math.max(getTotal() - (parseFloat(diskonInput.value) || 0), 0);
+        } else {
+            jumlahBayarInput.value = 0;
+        }
+
+        uangDiterimaInput.value = jumlahBayarInput.value;
+        updateSummary();
+    });
 
     // =========================
     // KLIK DI LUAR DROPDOWN
@@ -1045,20 +1132,41 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const total = getTotal();
-        const diskon = parseFloat(diskonInput.value) || 0;
-        const totalAkhir = total - diskon;
-        const jumlahBayar = parseFloat(jumlahBayarInput.value) || 0;
-        const status = statusPembayaran.value;
-
-        if (status === 'lunas' && jumlahBayar < totalAkhir) {
-            paymentError.textContent = 'Untuk pembayaran lunas, jumlah bayar tidak boleh kurang dari total akhir.';
+        const overStockItem = cart.find(item => item.quantity > item.stok);
+        if (overStockItem) {
+            paymentError.textContent = `Jumlah "${overStockItem.nama}" melebihi stok tersedia (${overStockItem.stok}).`;
             paymentError.style.display = 'block';
             return;
         }
 
-        if (status === 'dp' && jumlahBayar <= 0) {
-            paymentError.textContent = 'Untuk pembayaran DP, jumlah bayar harus lebih dari 0.';
+        const total = getTotal();
+        const diskon = parseFloat(diskonInput.value) || 0;
+        const totalAkhir = Math.max(total - diskon, 0);
+        const jumlahBayar = parseFloat(jumlahBayarInput.value) || 0;
+        const uangDiterima = parseFloat(uangDiterimaInput.value) || 0;
+        const status = statusPembayaran.value;
+        const metode = metodePembayaran.value;
+
+        if (diskon < 0 || diskon > total) {
+            paymentError.textContent = 'Diskon tidak boleh kurang dari 0 atau melebihi total belanja.';
+            paymentError.style.display = 'block';
+            return;
+        }
+
+        if (status === 'lunas' && Math.round(jumlahBayar * 100) !== Math.round(totalAkhir * 100)) {
+            paymentError.textContent = 'Untuk pembayaran lunas, jumlah pembayaran harus sama persis dengan total akhir.';
+            paymentError.style.display = 'block';
+            return;
+        }
+
+        if (status === 'dp' && (jumlahBayar <= 0 || jumlahBayar >= totalAkhir)) {
+            paymentError.textContent = 'Untuk pembayaran DP, jumlah harus lebih dari 0 dan lebih kecil dari total akhir.';
+            paymentError.style.display = 'block';
+            return;
+        }
+
+        if (metode === 'tunai' && uangDiterima < jumlahBayar) {
+            paymentError.textContent = 'Uang diterima tidak boleh kurang dari jumlah pembayaran.';
             paymentError.style.display = 'block';
             return;
         }

@@ -3,7 +3,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Laporan Penjualan</title>
+    <title>Laporan Penjualan & Pendapatan</title>
 
     <style>
         body {
@@ -35,22 +35,23 @@
         .summary {
             width: 100%;
             margin-bottom: 20px;
+            border-collapse: collapse;
         }
 
         .summary td {
-            width: 20%;
-            padding: 9px;
+            width: 16.66%;
+            padding: 8px;
             border: 1px solid #ddd;
             vertical-align: top;
         }
 
         .summary-title {
-            font-size: 9px;
+            font-size: 8px;
             color: #666;
         }
 
         .summary-value {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             margin-top: 5px;
         }
@@ -97,8 +98,8 @@
 <body>
 
     <div class="header">
-        <h1>LAPORAN PENJUALAN</h1>
-        <p>TOKO BANGUNAN</p>
+        <h1>LAPORAN PENJUALAN & PENDAPATAN</h1>
+        <p>TOKO BANGUN REJEKI</p>
     </div>
 
     <div class="periode">
@@ -114,6 +115,11 @@
             Sampai {{ \Carbon\Carbon::parse(request('tanggal_akhir'))->format('d/m/Y') }}
         @else
             Semua Periode
+        @endif
+
+        @if(request('search'))
+            <br>
+            <strong>Pencarian:</strong> {{ request('search') }}
         @endif
     </div>
 
@@ -142,7 +148,14 @@
             </td>
 
             <td>
-                <div class="summary-title">Total Retur</div>
+                <div class="summary-title">Total Diskon</div>
+                <div class="summary-value">
+                    Rp {{ number_format($totalDiskon, 0, ',', '.') }}
+                </div>
+            </td>
+
+            <td>
+                <div class="summary-title">Total Retur Bersih</div>
                 <div class="summary-value">
                     Rp {{ number_format($totalRetur, 0, ',', '.') }}
                 </div>
@@ -157,61 +170,86 @@
         </tr>
     </table>
 
-    {{-- DETAIL PENJUALAN --}}
-    <div class="section-title">Detail Penjualan</div>
+    
+{{-- TABEL GABUNGAN PENJUALAN DAN PENDAPATAN --}}
+<h3 style="margin-top: 20px; margin-bottom: 10px;">
+    DAFTAR TRANSAKSI PENJUALAN
+</h3>
 
-    <table class="data">
-        <thead>
+<table width="100%" cellspacing="0" cellpadding="6"
+       style="border-collapse: collapse; font-size: 9px;">
+    <thead>
+        <tr style="background-color: #e5e7eb;">
+            <th style="border: 1px solid #333;">No</th>
+            <th style="border: 1px solid #333;">Invoice</th>
+            <th style="border: 1px solid #333;">Kasir</th>
+            <th style="border: 1px solid #333;">Pelanggan</th>
+            <th style="border: 1px solid #333;">Tanggal Transaksi</th>
+            <th style="border: 1px solid #333;">Total</th>
+            <th style="border: 1px solid #333;">Dibayar</th>
+            <th style="border: 1px solid #333;">Sisa</th>
+            <th style="border: 1px solid #333;">Status</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        @forelse($transactions as $transaction)
+            @php
+                $total = (float) $transaction->total_akhir;
+                $dibayar = (float) $transaction->jumlah_bayar;
+                $sisa = max($total - $dibayar, 0);
+            @endphp
+
             <tr>
-                <th>No</th>
-                <th>Invoice</th>
-                <th>Tanggal Transaksi</th>
-                <th>Produk</th>
-                <th>Kategori</th>
-                <th>Harga</th>
-                <th>Jumlah</th>
-                <th>Subtotal</th>
+                <td style="border: 1px solid #333; text-align: center;">
+                    {{ $loop->iteration }}
+                </td>
+
+                <td style="border: 1px solid #333;">
+                    {{ $transaction->nomor_invoice }}
+                </td>
+
+                <td style="border: 1px solid #333;">
+                    {{ $transaction->user->name ?? '-' }}
+                </td>
+
+                <td style="border: 1px solid #333;">
+                    {{ $transaction->customer->nama ?? 'Pelanggan Umum' }}
+                </td>
+
+                <td style="border: 1px solid #333; text-align: center;">
+                    {{ $transaction->tanggal_transaksi
+                        ? \Carbon\Carbon::parse($transaction->tanggal_transaksi)->format('d/m/Y H:i')
+                        : '-' }}
+                </td>
+
+                <td style="border: 1px solid #333; text-align: right;">
+                    Rp {{ number_format($total, 0, ',', '.') }}
+                </td>
+
+                <td style="border: 1px solid #333; text-align: right;">
+                    Rp {{ number_format($dibayar, 0, ',', '.') }}
+                </td>
+
+                <td style="border: 1px solid #333; text-align: right;">
+                    Rp {{ number_format($sisa, 0, ',', '.') }}
+                </td>
+
+                <td style="border: 1px solid #333; text-align: center;">
+                    {{ ucfirst($transaction->status_pembayaran ?? '-') }}
+                </td>
             </tr>
-        </thead>
+        @empty
+            <tr>
+                <td colspan="9"
+                    style="border: 1px solid #333; text-align: center;">
+                    Tidak ada transaksi yang sesuai dengan filter.
+                </td>
+            </tr>
+        @endforelse
+    </tbody>
+</table>
 
-        <tbody>
-            @forelse($details as $detail)
-                <tr>
-                    <td class="text-center">{{ $loop->iteration }}</td>
-
-                    <td>
-                        {{ $detail->transaction->nomor_invoice ?? '-' }}
-                    </td>
-
-                    <td class="text-center">
-                        {{ $detail->transaction && $detail->transaction->tanggal_transaksi
-                            ? \Carbon\Carbon::parse($detail->transaction->tanggal_transaksi)->format('d/m/Y H:i')
-                            : '-' }}
-                    </td>
-
-                    <td>{{ $detail->product->nama ?? '-' }}</td>
-
-                    <td>{{ $detail->product->category->nama ?? '-' }}</td>
-
-                    <td class="text-right">
-                        Rp {{ number_format($detail->harga, 0, ',', '.') }}
-                    </td>
-
-                    <td class="text-center">{{ $detail->quantity }}</td>
-
-                    <td class="text-right">
-                        Rp {{ number_format($detail->subtotal, 0, ',', '.') }}
-                    </td>
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="8" class="text-center">
-                        Tidak ada data penjualan pada periode tersebut.
-                    </td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
 
     {{-- DETAIL RETUR --}}
     <div class="section-title">Detail Retur Penjualan</div>
@@ -222,12 +260,13 @@
                 <th>No</th>
                 <th>No. Retur</th>
                 <th>Invoice Asal</th>
+                <th>Kasir</th>
                 <th>Tanggal Retur</th>
                 <th>Produk</th>
                 <th>Jumlah</th>
                 <th>Kondisi</th>
                 <th>Alasan</th>
-                <th>Subtotal Retur</th>
+                <th>Subtotal Retur Sebelum Diskon</th>
             </tr>
         </thead>
 
@@ -242,6 +281,10 @@
 
                     <td>
                         {{ $retur->salesReturn->transaction->nomor_invoice ?? '-' }}
+                    </td>
+
+                    <td>
+                        {{ $retur->salesReturn->transaction->user->name ?? '-' }}
                     </td>
 
                     <td class="text-center">

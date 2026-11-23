@@ -17,30 +17,23 @@ class Transaction extends Model
         'diskon',
         'total_akhir',
         'jumlah_bayar',
+        'jumlah_dp',
+        'uang_diterima',
+        'uang_diterima_pelunasan',
         'metode_pembayaran',
         'status_pembayaran',
     ];
 
-
     protected $casts = [
-
-        'tanggal_transaksi' =>
-            'datetime',
-
-        'total' =>
-            'decimal:2',
-
-        'diskon' =>
-            'decimal:2',
-
-        'total_akhir' =>
-            'decimal:2',
-
-        'jumlah_bayar' =>
-            'decimal:2',
-
+        'tanggal_transaksi' => 'datetime',
+        'total' => 'decimal:2',
+        'diskon' => 'decimal:2',
+        'total_akhir' => 'decimal:2',
+        'jumlah_bayar' => 'decimal:2',
+        'jumlah_dp' => 'decimal:2',
+        'uang_diterima' => 'decimal:2',
+        'uang_diterima_pelunasan' => 'decimal:2',
     ];
-
 
     public function customer(): BelongsTo
     {
@@ -50,7 +43,6 @@ class Transaction extends Model
         );
     }
 
-
     public function user(): BelongsTo
     {
         return $this->belongsTo(
@@ -58,7 +50,6 @@ class Transaction extends Model
             'dibuat_oleh'
         );
     }
-
 
     public function details(): HasMany
     {

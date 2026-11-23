@@ -68,8 +68,17 @@
                     <label for="telepon" class="form-label">
                         Telepon <span class="required">*</span>
                     </label>
-                    <input type="text" id="telepon" name="telepon"
-                        class="form-control" value="{{ old('telepon') }}"required>
+                    <input
+                        type="tel"
+                        id="telepon"
+                        name="telepon"
+                        class="form-control"
+                        value="{{ old('telepon') }}"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        maxlength="15"
+                        required
+                    >
                 </div>
 
                 <div class="form-group">
@@ -469,6 +478,14 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Validasi input telepon: hanya menerima angka (0-9)
+    const teleponInput = document.getElementById('telepon');
+    if (teleponInput) {
+        teleponInput.addEventListener('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+    }
+
     const searchInput = document.getElementById('search-supplier');
     const allRows = Array.from(document.querySelectorAll('.supplier-row'));
     const emptySearchRow = document.getElementById('empty-search-row');

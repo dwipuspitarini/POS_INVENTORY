@@ -523,11 +523,6 @@ textarea.form-control {
             </a>
 
             <div class="menu-title">Laporan</div>
-
-            <a href="{{ route('owner.laporan.pendapatan') }}">
-                Laporan Pendapatan
-            </a>
-
             <a href="{{ route('owner.laporan.penjualan') }}">
                 Laporan Penjualan
             </a>
@@ -557,6 +552,9 @@ textarea.form-control {
 
             <a href="{{ route('stocks.index') }}">
                 Stok
+            </a>
+            <a href="{{ route('laporan.kasir') }}">
+                Laporan Penjualan Kasir
             </a>
             
 

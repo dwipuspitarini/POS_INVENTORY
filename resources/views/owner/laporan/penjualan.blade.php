@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', 'Laporan Penjualan')
-@section('page-title', 'Laporan Penjualan')
+@section('title', 'Laporan Penjualan & Pendapatan')
+@section('page-title', 'Laporan Penjualan & Pendapatan')
 
 @section('content')
 
@@ -9,8 +9,8 @@
 
     <div class="page-header mb-4">
         <div>
-            <h1 style="font-size: 24px; font-weight: 700; color: #1f2937; margin-bottom: 4px;">Laporan Penjualan</h1>
-            <p style="color: #6b7280; margin-bottom: 0;">Laporan penjualan dan retur berdasarkan periode transaksi</p>
+            <h1 style="font-size: 24px; font-weight: 700; color: #1f2937; margin-bottom: 4px;">Laporan Penjualan & Pendapatan</h1>
+            <p style="color: #6b7280; margin-bottom: 0;">Laporan penjualan dan Pendapatan berdasarkan periode transaksi</p>
         </div>
     </div>
 
@@ -32,6 +32,22 @@
                     placeholder="Cari Invoice atau Nama Produk"
                     value="{{ request('search') }}"
                 >
+            </div>
+
+            {{-- FILTER KASIR --}}
+            <div class="form-group mb-3">
+                <label for="kasir_id" class="form-label">
+                    Filter Kasir
+                </label>
+                <select name="kasir_id" id="kasir_id" class="form-control">
+                    <option value="">Semua Kasir</option>
+                    @foreach($kasirs as $kasir)
+                    <option value="{{ $kasir->id }}"
+                        {{ (string) request('kasir_id') === (string) $kasir->id ? 'selected' : '' }}>
+                        {{ $kasir->name }}
+                    </option>
+                    @endforeach
+                </select>
             </div>
 
             {{-- BARIS 2: TANGGAL & ACTION BUTTONS SEJAJAR --}}
@@ -72,7 +88,8 @@
                             href="{{ route('owner.laporan.penjualan.pdf', [
                                 'search' => request('search'),
                                 'tanggal_mulai' => request('tanggal_mulai'),
-                                'tanggal_akhir' => request('tanggal_akhir')
+                                'tanggal_akhir' => request('tanggal_akhir'),
+                                'kasir_id' => request('kasir_id')
                             ]) }}"
                             class="btn btn-danger"
                         >
@@ -91,213 +108,169 @@
         </form>
     </div>
 
-    {{-- RINGKASAN --}}
-    <div class="cards mb-20">
+    
+{{-- RINGKASAN --}}
+<div class="cards mb-20">
 
-        <div class="card">
-            <div class="card-title">Total Transaksi</div>
-            <div class="card-value">
-                {{ number_format($totalTransaksi, 0, ',', '.') }}
-            </div>
+    <div class="card">
+        <div class="card-title">Total Transaksi</div>
+        <div class="card-value">
+            {{ number_format($totalTransaksi, 0, ',', '.') }}
         </div>
-
-        <div class="card">
-            <div class="card-title">Total Produk Terjual</div>
-            <div class="card-value">
-                {{ number_format($totalProdukTerjual, 0, ',', '.') }}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">Penjualan Kotor</div>
-            <div class="card-value">
-                Rp {{ number_format($totalPenjualanKotor, 0, ',', '.') }}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">Total Retur</div>
-            <div class="card-value">
-                Rp {{ number_format($totalRetur, 0, ',', '.') }}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">Penjualan Bersih</div>
-            <div class="card-value">
-                Rp {{ number_format($totalPenjualanBersih, 0, ',', '.') }}
-            </div>
-        </div>
-
     </div>
 
-    {{-- DETAIL PENJUALAN --}}
-    <div class="table-card mb-20">
-
-        <div class="table-card-header">
-            Detail Penjualan
+    <div class="card">
+        <div class="card-title">Total Produk Terjual</div>
+        <div class="card-value">
+            {{ number_format($totalProdukTerjual, 0, ',', '.') }}
         </div>
-
-        <div class="table-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>Invoice</th>
-                        <th>Tanggal</th>
-                        <th>Produk</th>
-                        <th>Kategori</th>
-                        <th>Harga</th>
-                        <th>Jumlah</th>
-                        <th>Subtotal</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @forelse($details as $detail)
-                        <tr>
-                            <td>
-                                {{ $details->firstItem() + $loop->index }}
-                            </td>
-
-                            <td>
-                                {{ $detail->transaction->nomor_invoice ?? '-' }}
-                            </td>
-
-                            <td>
-                                {{ $detail->transaction && $detail->transaction->tanggal_transaksi
-                                    ? \Carbon\Carbon::parse($detail->transaction->tanggal_transaksi)->format('d/m/Y H:i')
-                                    : '-' }}
-                            </td>
-
-                            <td>
-                                {{ $detail->product->nama ?? '-' }}
-                            </td>
-
-                            <td>
-                                {{ $detail->product->category->nama ?? '-' }}
-                            </td>
-
-                            <td>
-                                Rp {{ number_format($detail->harga, 0, ',', '.') }}
-                            </td>
-
-                            <td>
-                                {{ $detail->quantity }}
-                            </td>
-
-                            <td>
-                                Rp {{ number_format($detail->subtotal, 0, ',', '.') }}
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8" class="empty-data">
-                                Tidak ada data penjualan yang sesuai dengan pencarian atau periode.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-
-        {{-- PAGINATION PENJUALAN --}}
-        @if($details->hasPages())
-            <div class="report-pagination-wrapper">
-
-                <div class="pagination-info">
-                    Menampilkan
-                    <strong>{{ $details->firstItem() }}</strong> -
-                    <strong>{{ $details->lastItem() }}</strong>
-                    dari <strong>{{ $details->total() }}</strong>
-                    detail penjualan
-                </div>
-
-                <div class="report-pagination">
-                    {{ $details->links('pagination::bootstrap-4') }}
-                </div>
-
-            </div>
-        @endif
-
     </div>
 
-    {{-- DETAIL RETUR PENJUALAN --}}
-    <div class="table-card">
-
-        <div class="table-card-header">
-            Detail Retur Penjualan
+    <div class="card">
+        <div class="card-title">Penjualan Kotor</div>
+        <div class="card-value">
+            Rp {{ number_format($totalPenjualanKotor, 0, ',', '.') }}
         </div>
+    </div>
 
-        <div class="table-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>No. Retur</th>
-                        <th>Invoice Asal</th>
-                        <th>Tanggal Retur</th>
-                        <th>Produk</th>
-                        <th>Jumlah Retur</th>
-                        <th>Kondisi</th>
-                        <th>Alasan</th>
-                        <th>Subtotal Retur</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @forelse($returns as $retur)
-                        <tr>
-                            <td>{{ $loop->iteration }}</td>
-
-                            <td>
-                                {{ $retur->salesReturn->nomor_retur ?? '-' }}
-                            </td>
-
-                            <td>
-                                {{ $retur->salesReturn->transaction->nomor_invoice ?? '-' }}
-                            </td>
-
-                            <td>
-                                {{ $retur->salesReturn && $retur->salesReturn->tanggal_retur
-                                    ? \Carbon\Carbon::parse($retur->salesReturn->tanggal_retur)->format('d/m/Y H:i')
-                                    : '-' }}
-                            </td>
-
-                            <td>
-                                {{ $retur->product->nama ?? '-' }}
-                            </td>
-
-                            <td>
-                                {{ $retur->quantity }}
-                            </td>
-
-                            <td>
-                                {{ ucfirst($retur->kondisi ?? '-') }}
-                            </td>
-
-                            <td>
-                                {{ $retur->alasan ?? '-' }}
-                            </td>
-
-                            <td>
-                                Rp {{ number_format($retur->subtotal, 0, ',', '.') }}
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="9" class="empty-data">
-                                Tidak ada retur yang sesuai dengan pencarian atau periode.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+    <div class="card">
+        <div class="card-title">Total Diskon</div>
+        <div class="card-value">
+            Rp {{ number_format($totalDiskon, 0, ',', '.') }}
         </div>
+    </div>
 
+    <div class="card">
+        <div class="card-title">Total Retur Bersih</div>
+        <div class="card-value">
+            Rp {{ number_format($totalRetur, 0, ',', '.') }}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Penjualan Bersih</div>
+        <div class="card-value">
+            Rp {{ number_format($totalPenjualanBersih, 0, ',', '.') }}
+        </div>
     </div>
 
 </div>
+
+
+    
+{{-- TABEL LAPORAN PENJUALAN & PENDAPATAN --}}
+<div class="table-card">
+
+    <div class="table-card-header">
+        Daftar Transaksi Penjualan
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Invoice</th>
+                    <th>Kasir</th>
+                    <th>Pelanggan</th>
+                    <th>Tanggal Transaksi</th>
+                    <th>Total</th>
+                    <th>Dibayar</th>
+                    <th>Sisa</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @forelse($transactions as $transaction)
+                    @php
+                        $total = (float) $transaction->total_akhir;
+                        $dibayar = (float) $transaction->jumlah_bayar;
+                        $sisa = max($total - $dibayar, 0);
+                    @endphp
+
+                    <tr>
+                        <td>
+                            {{ $transactions->firstItem() + $loop->index }}
+                        </td>
+
+                        <td>
+                            {{ $transaction->nomor_invoice }}
+                        </td>
+
+                        <td>
+                            {{ $transaction->user->name ?? '-' }}
+                        </td>
+
+                        <td>
+                            {{ $transaction->customer->nama ?? 'Pelanggan Umum' }}
+                        </td>
+
+                        <td>
+                            {{ $transaction->tanggal_transaksi
+                                ? \Carbon\Carbon::parse($transaction->tanggal_transaksi)->format('d/m/Y H:i')
+                                : '-' }}
+                        </td>
+
+                        <td>
+                            Rp {{ number_format($total, 0, ',', '.') }}
+                        </td>
+
+                        <td>
+                            Rp {{ number_format($dibayar, 0, ',', '.') }}
+                        </td>
+
+                        <td>
+                            Rp {{ number_format($sisa, 0, ',', '.') }}
+                        </td>
+
+                        <td>
+                            {{ ucfirst($transaction->status_pembayaran ?? '-') }}
+                        </td>
+
+                        <td>
+                            <a
+                                href="{{ route('owner.laporan.penjualan.detail', $transaction->id) }}?{{ http_build_query(request()->query()) }}"
+                                class="btn btn-primary btn-sm"
+                            >
+                                Detail
+                            </a>
+                        </td>
+                    </tr>
+
+                @empty
+                    <tr>
+                        <td colspan="10" class="empty-data">
+                            Tidak ada transaksi yang sesuai dengan filter.
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    {{-- PAGINATION --}}
+    @if($transactions->hasPages())
+        <div class="report-pagination-wrapper">
+
+            <div class="pagination-info">
+                Menampilkan
+                <strong>{{ $transactions->firstItem() }}</strong> -
+                <strong>{{ $transactions->lastItem() }}</strong>
+                dari <strong>{{ $transactions->total() }}</strong>
+                transaksi
+            </div>
+
+            <div class="report-pagination">
+                {{ $transactions->links('pagination::bootstrap-4') }}
+            </div>
+
+        </div>
+    @endif
+
+</div>
+
 
 @push('styles')
 <style>

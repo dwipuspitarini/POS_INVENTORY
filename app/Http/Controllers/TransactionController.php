@@ -7,6 +7,9 @@ use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\StockMovement;
+use App\Models\User;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -99,10 +102,15 @@ class TransactionController extends Controller
                 'numeric',
                 'min:0'
             ],
-
+            'uang_diterima' => [
+                'required_if:metode_pembayaran,tunai',
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
             'metode_pembayaran' => [
                 'required',
-                'in:tunai,qris,mesin'
+                'in:tunai,qris,edc'
             ],
 
             'status_pembayaran' => [
@@ -124,14 +132,14 @@ class TransactionController extends Controller
     );
 
     if (
-        $tanggalTransaksi->lt(Carbon::parse('2026-09-01 00:00:00')) ||
-        $tanggalTransaksi->gt(Carbon::parse('2026-09-30 23:59:59'))
+        $tanggalTransaksi->lt(Carbon::parse('2026-10-01 00:00:00')) ||
+        $tanggalTransaksi->gt(Carbon::parse('2026-10-31 23:59:59'))
     ) {
         return back()
             ->withInput()
             ->withErrors([
                 'tanggal_transaksi' =>
-                    'Tanggal transaksi harus berada pada September 2026.',
+                    'Tanggal transaksi harus berada pada Oktober 2026.',
             ]);
     }
 } else {
@@ -376,63 +384,66 @@ foreach ($normalizedCart as $productId => $quantity) {
                         $total - $diskon;
 
 
-                    $jumlahBayar =
-                        (float) $validated['jumlah_bayar'];
+                    $jumlahBayar = (float) $validated['jumlah_bayar'];
+
+                    $statusPembayaran = $validated['status_pembayaran'];
+                    $metodePembayaran = $validated['metode_pembayaran'];
+                    // Uang diterima hanya dicatat untuk pembayaran tunai.
+                    $uangDiterima = $metodePembayaran === 'tunai'
+                    ? (float) $validated['uang_diterima']
+                    : null;
 
 
-                    $statusPembayaran =
-                        $validated['status_pembayaran'];
+// Jumlah pembayaran tidak boleh melebihi total transaksi.
+if ($jumlahBayar > $totalAkhir) {
+    throw new \Exception(
+        'Jumlah pembayaran tidak boleh melebihi total transaksi.'
+    );
+}
 
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | VALIDASI PEMBAYARAN LUNAS
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if (
-                        $statusPembayaran === 'lunas' &&
-                        $jumlahBayar < $totalAkhir
-                    ) {
-
-                        throw new \Exception(
-                            'Jumlah bayar belum mencukupi untuk pembayaran lunas.'
-                        );
-                    }
+// Pembayaran tunai harus mencukupi jumlah yang dibayarkan.
+if (
+    $metodePembayaran === 'tunai' &&
+    $uangDiterima < $jumlahBayar
+) {
+    throw new \Exception(
+        'Uang diterima tidak boleh kurang dari jumlah pembayaran.'
+    );
+}
 
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | VALIDASI PEMBAYARAN DP
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if (
-                        $statusPembayaran === 'dp' &&
-                        $jumlahBayar <= 0
-                    ) {
-
-                        throw new \Exception(
-                            'Jumlah pembayaran DP harus lebih dari 0.'
-                        );
-                    }
+// Pembayaran lunas harus sama persis dengan total transaksi.
+if (
+    $statusPembayaran === 'lunas' &&
+    $jumlahBayar != $totalAkhir
+) {
+    throw new \Exception(
+        'Jumlah pembayaran lunas harus sama dengan total transaksi.'
+    );
+}
 
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | DP tidak boleh melebihi total
-                    |--------------------------------------------------------------------------
-                    */
+// Pembayaran DP harus lebih dari 0.
+if (
+    $statusPembayaran === 'dp' &&
+    $jumlahBayar <= 0
+) {
+    throw new \Exception(
+        'Jumlah pembayaran DP harus lebih dari 0.'
+    );
+}
 
-                    if (
-                        $statusPembayaran === 'dp' &&
-                        $jumlahBayar > $totalAkhir
-                    ) {
 
-                        throw new \Exception(
-                            'Jumlah DP tidak boleh lebih besar dari total transaksi.'
-                        );
-                    }
+// DP harus lebih kecil daripada total transaksi.
+if (
+    $statusPembayaran === 'dp' &&
+    $jumlahBayar >= $totalAkhir
+) {
+    throw new \Exception(
+        'Jumlah DP harus lebih kecil dari total transaksi. Gunakan status lunas jika pembayaran sudah penuh.'
+    );
+}
 
 
                     /*
@@ -487,16 +498,14 @@ foreach ($normalizedCart as $productId => $quantity) {
                             'total_akhir' =>
                                 $totalAkhir,
 
-                            'jumlah_bayar' =>
-                                $jumlahBayar,
-
-                            'metode_pembayaran' =>
-                                $validated[
-                                    'metode_pembayaran'
-                                ],
-
-                            'status_pembayaran' =>
-                                $statusPembayaran,
+                           'jumlah_bayar' => $jumlahBayar,
+                           'jumlah_dp' => $statusPembayaran === 'dp'
+                           ? $jumlahBayar
+                           : 0,
+                           'uang_diterima' => $uangDiterima,
+                           'uang_diterima_pelunasan' => null,
+                           'metode_pembayaran' => $metodePembayaran,
+                           'status_pembayaran' => $statusPembayaran,
                         ]);
 
 
@@ -641,118 +650,528 @@ foreach ($normalizedCart as $productId => $quantity) {
     }
 
 
-    public function pelunasan(Request $request, Transaction $transaction)
-    {
+    
+
+public function pelunasan(Request $request, Transaction $transaction)
+{
     if ($transaction->status_pembayaran !== 'dp') {
         return redirect()
             ->route('transactions.show', $transaction)
             ->with('error', 'Transaksi ini sudah lunas.');
     }
 
-    $sisaPembayaran = max(
-        $transaction->total_akhir - $transaction->jumlah_bayar,
-        0
-    );
-
-    $validated = $request->validate([
-        'metode_pembayaran' => [
-            'required',
-            'in:tunai,qris,mesin',
-        ],
-
+    $rules = [
         'jumlah_pelunasan' => [
             'required',
             'numeric',
-            'min:' . $sisaPembayaran,
-            'max:' . $sisaPembayaran,
+            'min:0',
         ],
-    ], [
-        'metode_pembayaran.required' =>
-            'Metode pembayaran harus dipilih.',
+    ];
 
-        'metode_pembayaran.in' =>
-            'Metode pembayaran tidak valid.',
+    if ($transaction->metode_pembayaran === 'tunai') {
+        $rules['uang_diterima'] = [
+            'required',
+            'numeric',
+            'min:0',
+        ];
+    }
 
+    $messages = [
         'jumlah_pelunasan.required' =>
             'Jumlah pelunasan harus diisi.',
+        'jumlah_pelunasan.numeric' =>
+            'Jumlah pelunasan harus berupa angka.',
+        'uang_diterima.required' =>
+            'Uang yang diterima harus diisi.',
+        'uang_diterima.numeric' =>
+            'Uang yang diterima harus berupa angka.',
+        'uang_diterima.min' =>
+            'Uang yang diterima tidak boleh kurang dari 0.',
+    ];
 
-        'jumlah_pelunasan.min' =>
-            'Jumlah pelunasan harus sesuai dengan sisa pembayaran.',
+    $validated = $request->validate($rules, $messages);
 
-        'jumlah_pelunasan.max' =>
-            'Jumlah pelunasan tidak boleh melebihi sisa pembayaran.',
-    ]);
+    try {
+        DB::transaction(function () use ($transaction, $validated) {
 
-    $transaction->update([
-        'jumlah_bayar' => $transaction->total_akhir,
-        'metode_pembayaran' => $validated['metode_pembayaran'],
-        'status_pembayaran' => 'lunas',
-    ]);
+            $transaksi = Transaction::where(
+                'id',
+                $transaction->id
+            )->lockForUpdate()->firstOrFail();
 
-    return redirect()
-        ->route('transactions.show', $transaction)
-        ->with('success', 'Pelunasan transaksi berhasil.');
-    }
+            if ($transaksi->status_pembayaran !== 'dp') {
+                throw new \Exception(
+                    'Transaksi ini sudah lunas.'
+                );
+            }
 
-    // LAPORAN PENDAPATAN
-    public function laporanPendapatan(Request $request)
-    {
-        $query = Transaction::with('customer')
-            ->latest('tanggal_transaksi');
-
-        // Filter tanggal mulai
-        if ($request->filled('tanggal_mulai')) {
-            $query->whereDate(
-                'tanggal_transaksi',
-                '>=',
-                $request->tanggal_mulai
-            );
-        }
-
-        // Filter tanggal akhir
-        if ($request->filled('tanggal_akhir')) {
-            $query->whereDate(
-                'tanggal_transaksi',
-                '<=',
-                $request->tanggal_akhir
-            );
-        }
-
-        // 1. Hitung Ringkasan Statistik DARI SELURUH DATA yang terfilter (sebelum dipaginate)
-        $totalTransaksi = (clone $query)->count();
-
-        $totalRetur = $this->hitungTotalRetur($request);
-        $totalPenjualan = (clone $query)->sum('total_akhir') - $totalRetur;
-
-        $totalDibayar   = (clone $query)->sum('jumlah_bayar');
-
-        $totalPiutang   = (clone $query)->get()->sum(function ($transaction) {
-            return max(
-                $transaction->total_akhir - $transaction->jumlah_bayar,
+            $sisaPembayaran = max(
+                (float) $transaksi->total_akhir -
+                (float) $transaksi->jumlah_bayar,
                 0
             );
+
+            $jumlahPelunasan = (float) $validated['jumlah_pelunasan'];
+
+            if (round($jumlahPelunasan, 2) !== round($sisaPembayaran, 2)) {
+                throw new \Exception(
+                    'Jumlah pelunasan harus sesuai dengan sisa pembayaran.'
+                );
+            }
+
+            $uangDiterimaPelunasan = null;
+
+            if ($transaksi->metode_pembayaran === 'tunai') {
+                $uangDiterimaPelunasan =
+                    (float) $validated['uang_diterima'];
+
+                if ($uangDiterimaPelunasan < $sisaPembayaran) {
+                    throw new \Exception(
+                        'Uang diterima tidak boleh kurang dari sisa pembayaran.'
+                    );
+                }
+            }
+
+            // DP awal dan metode pembayaran awal tetap dipertahankan.
+            $transaksi->update([
+                'jumlah_bayar' => $transaksi->total_akhir,
+                'uang_diterima_pelunasan' => $uangDiterimaPelunasan,
+                'status_pembayaran' => 'lunas',
+            ]);
         });
 
-        // 2. Gunakan PAGINATE (10 data per halaman) dan bawa query filter
-        $transactions = $query->paginate(10)->withQueryString();
+        return redirect()
+            ->route('transactions.show', $transaction)
+            ->with('success', 'Pelunasan transaksi berhasil.');
 
-        return view('owner.laporan.pendapatan', compact(
-            'transactions',
-            'totalTransaksi',
-            'totalPenjualan',
-            'totalDibayar',
-            'totalPiutang',
-            'totalRetur'
-        ));
+    } catch (\Exception $e) {
+        return back()
+            ->withInput()
+            ->withErrors([
+                'pelunasan' => $e->getMessage(),
+            ]);
+    }
+}
+
+
+
+// LAPORAN KASIR
+
+
+public function laporanKasir(Request $request)
+{
+    $user = Auth::user();
+
+    // Hanya owner dan kasir yang boleh mengakses laporan.
+    if (!in_array($user->role, ['owner', 'kasir'])) {
+        abort(403);
     }
 
-    // CETAK PDF LAPORAN PENDAPATAN
-    public function laporanPendapatanPdf(Request $request)
-    {
-    $query = Transaction::with('customer')
-        ->latest('tanggal_transaksi');
+    // Validasi filter.
+    $request->validate([
+        'tanggal_mulai' => ['nullable', 'date'],
+        'tanggal_akhir' => [
+            'nullable',
+            'date',
+            'after_or_equal:tanggal_mulai'
+        ],
+        'kasir_id' => [
+            'nullable',
+            'integer',
+            Rule::exists('users', 'id')->where(function ($query) {
+                $query->where('role', 'kasir');
+            }),
+        ],
+    ]);
 
-    // Filter tanggal mulai
+    // Periode laporan.
+    $tanggalMulai = $request->input(
+        'tanggal_mulai',
+        now()->toDateString()
+    );
+
+    $tanggalAkhir = $request->input(
+        'tanggal_akhir',
+        now()->toDateString()
+    );
+
+    // Daftar kasir untuk owner.
+    $kasirs = $user->role === 'owner'
+        ? User::where('role', 'kasir')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+        : collect();
+
+    // Query transaksi.
+    $query = Transaction::with('user')
+        ->whereDate('tanggal_transaksi', '>=', $tanggalMulai)
+        ->whereDate('tanggal_transaksi', '<=', $tanggalAkhir);
+
+    // Pembatasan hak akses kasir.
+    if ($user->role === 'kasir') {
+        $query->where('dibuat_oleh', $user->id);
+        $kasirId = $user->id;
+    } else {
+        $kasirId = $request->input('kasir_id');
+
+        if ($kasirId) {
+            $query->where('dibuat_oleh', $kasirId);
+        }
+    }
+
+    $transaksi = $query
+        ->orderBy('tanggal_transaksi')
+        ->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | DATA RETUR
+    |--------------------------------------------------------------------------
+    |
+    | Retur dihitung berdasarkan tanggal retur.
+    | Kasir ditentukan berdasarkan kasir pada transaksi aslinya.
+    |
+    */
+
+    $queryRetur = \App\Models\SalesReturn::with('transaction')
+        ->whereDate('tanggal_retur', '>=', $tanggalMulai)
+        ->whereDate('tanggal_retur', '<=', $tanggalAkhir)
+        ->whereHas('transaction', function ($q) use ($user, $kasirId) {
+
+            if ($user->role === 'kasir') {
+                $q->where('dibuat_oleh', $user->id);
+            } elseif ($kasirId) {
+                $q->where('dibuat_oleh', $kasirId);
+            }
+        });
+
+    $retur = $queryRetur->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | RINGKASAN PENJUALAN
+    |--------------------------------------------------------------------------
+    */
+
+    // Jumlah transaksi tetap menghitung invoice asli.
+    $jumlahTransaksi = $transaksi->count();
+
+    // Penjualan sebelum diskon.
+    $totalPenjualanKotor = (float) $transaksi->sum('total');
+
+    // Total diskon.
+    $totalDiskon = (float) $transaksi->sum('diskon');
+
+    // Total retur setelah alokasi diskon.
+    // Menggunakan jumlah_pengembalian yang sudah dihitung
+    // dan disimpan oleh SalesReturnController.
+    $totalRetur = (float) $retur->sum('jumlah_pengembalian');
+
+    // Penjualan bersih setelah diskon dan retur.
+    $totalPenjualanBersih = max(
+        (float) $transaksi->sum('total_akhir') - $totalRetur,
+        0
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | RINGKASAN METODE PEMBAYARAN
+    |--------------------------------------------------------------------------
+    */
+
+    $ringkasanMetode = [
+        'tunai' => [
+            'nama' => 'Tunai',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+        'qris' => [
+            'nama' => 'QRIS',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+        'edc' => [
+            'nama' => 'EDC',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+    ];
+
+    $totalDibayar = 0;
+    $totalSisa = 0;
+    $totalTunaiDiterima = 0;
+    $totalKembalian = 0;
+
+    foreach ($transaksi as $item) {
+
+        $metode = $item->metode_pembayaran;
+
+        $jumlahBayar = (float) $item->jumlah_bayar;
+
+        $sisa = max(
+            (float) $item->total_akhir - $jumlahBayar,
+            0
+        );
+
+        $totalDibayar += $jumlahBayar;
+        $totalSisa += $sisa;
+
+        if (isset($ringkasanMetode[$metode])) {
+            $ringkasanMetode[$metode]['jumlah_transaksi']++;
+            $ringkasanMetode[$metode]['total'] += $jumlahBayar;
+        }
+
+        // Perhitungan uang tunai dan kembalian.
+        if ($metode === 'tunai') {
+
+            $jumlahDp = (float) ($item->jumlah_dp ?? 0);
+
+            $pembayaranAwal = $jumlahDp > 0
+                ? $jumlahDp
+                : $jumlahBayar;
+
+            $jumlahPelunasan = $jumlahDp > 0
+                ? max($jumlahBayar - $jumlahDp, 0)
+                : 0;
+
+            $uangAwal = (float) ($item->uang_diterima ?? 0);
+
+            $uangPelunasan = (float) (
+                $item->uang_diterima_pelunasan ?? 0
+            );
+
+            $kembalianAwal = max(
+                $uangAwal - $pembayaranAwal,
+                0
+            );
+
+            $kembalianPelunasan = max(
+                $uangPelunasan - $jumlahPelunasan,
+                0
+            );
+
+            $totalTunaiDiterima += $uangAwal + $uangPelunasan;
+
+            $totalKembalian +=
+                $kembalianAwal + $kembalianPelunasan;
+        }
+    }
+
+    $totalTunaiBersih = max(
+        $totalTunaiDiterima - $totalKembalian,
+        0
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | DATA KE BLADE
+    |--------------------------------------------------------------------------
+    */
+
+    return view('owner.laporan.kasir', compact(
+        'transaksi',
+        'retur',
+        'jumlahTransaksi',
+        'ringkasanMetode',
+        'totalPenjualanKotor',
+        'totalDiskon',
+        'totalRetur',
+        'totalPenjualanBersih',
+        'totalDibayar',
+        'totalSisa',
+        'totalTunaiDiterima',
+        'totalKembalian',
+        'totalTunaiBersih',
+        'kasirs',
+        'kasirId',
+        'tanggalMulai',
+        'tanggalAkhir'
+    ));
+}
+
+public function laporanKasirPdf(Request $request)
+{
+    $user = Auth::user();
+
+    // Batasi akses hanya untuk owner dan kasir.
+    if (!in_array($user->role, ['owner', 'kasir'])) {
+        abort(403);
+    }
+
+    // Validasi filter.
+    $request->validate([
+        'tanggal_mulai' => ['nullable', 'date'],
+        'tanggal_akhir' => [
+            'nullable',
+            'date',
+            'after_or_equal:tanggal_mulai'
+        ],
+        'kasir_id' => [
+            'nullable',
+            'integer',
+            Rule::exists('users', 'id')->where(function ($query) {
+                $query->where('role', 'kasir');
+            }),
+        ],
+    ]);
+
+    // Periode laporan.
+    $tanggalMulai = $request->input(
+        'tanggal_mulai',
+        now()->toDateString()
+    );
+
+    $tanggalAkhir = $request->input(
+        'tanggal_akhir',
+        now()->toDateString()
+    );
+
+    // Query transaksi.
+    $query = Transaction::with('user')
+        ->whereDate('tanggal_transaksi', '>=', $tanggalMulai)
+        ->whereDate('tanggal_transaksi', '<=', $tanggalAkhir);
+
+    // Pembatasan berdasarkan akun.
+    if ($user->role === 'kasir') {
+        $query->where('dibuat_oleh', $user->id);
+        $kasirId = $user->id;
+        $namaKasir = $user->name;
+    } else {
+        $kasirId = $request->input('kasir_id');
+
+        if ($kasirId) {
+            $query->where('dibuat_oleh', $kasirId);
+            $namaKasir = User::find($kasirId)?->name ?? '-';
+        } else {
+            $namaKasir = 'Semua Kasir';
+        }
+    }
+
+    $transaksi = $query
+        ->orderBy('tanggal_transaksi')
+        ->get();
+
+    // Query retur berdasarkan tanggal retur.
+    $queryRetur = \App\Models\SalesReturn::with('transaction')
+        ->whereDate('tanggal_retur', '>=', $tanggalMulai)
+        ->whereDate('tanggal_retur', '<=', $tanggalAkhir)
+        ->whereHas('transaction', function ($q) use ($user, $kasirId) {
+
+            if ($user->role === 'kasir') {
+                $q->where('dibuat_oleh', $user->id);
+            } elseif ($kasirId) {
+                $q->where('dibuat_oleh', $kasirId);
+            }
+        });
+
+    $retur = $queryRetur
+        ->orderBy('tanggal_retur')
+        ->get();
+
+    // Ringkasan penjualan.
+    $jumlahTransaksi = $transaksi->count();
+
+    $totalPenjualanKotor = (float) $transaksi->sum('total');
+
+    $totalDiskon = (float) $transaksi->sum('diskon');
+
+    $totalRetur = (float) $retur->sum('jumlah_pengembalian');
+
+    $jumlahRetur = $retur->count();
+
+    $totalPenjualanBersih = max(
+        (float) $transaksi->sum('total_akhir') - $totalRetur,
+        0
+    );
+
+    // Ringkasan pembayaran.
+    $ringkasanMetode = [
+        'tunai' => [
+            'nama' => 'Tunai',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+        'qris' => [
+            'nama' => 'QRIS',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+        'edc' => [
+            'nama' => 'EDC',
+            'jumlah_transaksi' => 0,
+            'total' => 0,
+        ],
+    ];
+
+    foreach ($transaksi as $item) {
+        $metode = $item->metode_pembayaran;
+
+        if (isset($ringkasanMetode[$metode])) {
+            $ringkasanMetode[$metode]['jumlah_transaksi']++;
+            $ringkasanMetode[$metode]['total'] +=
+                (float) $item->jumlah_bayar;
+        }
+    }
+
+    // Buat PDF.
+    $pdf = Pdf::loadView('owner.laporan.pdf.kasir', compact(
+        'transaksi',
+        'retur',
+        'jumlahTransaksi',
+        'jumlahRetur',
+        'totalPenjualanKotor',
+        'totalDiskon',
+        'totalRetur',
+        'totalPenjualanBersih',
+        'ringkasanMetode',
+        'tanggalMulai',
+        'tanggalAkhir',
+        'namaKasir'
+    ));
+
+    $pdf->setPaper('a4', 'landscape');
+
+    return $pdf->stream(
+        'laporan-kasir-' . $tanggalMulai . '-sampai-' . $tanggalAkhir . '.pdf'
+    );
+}
+
+// LAPORAN PENJUALAN
+
+public function laporanPenjualan(Request $request)
+{
+    // VALIDASI FILTER
+    $request->validate([
+        'search' => ['nullable', 'string', 'max:255'],
+        'tanggal_mulai' => ['nullable', 'date'],
+        'tanggal_akhir' => [
+            'nullable',
+            'date',
+            'after_or_equal:tanggal_mulai',
+        ],
+        'kasir_id' => [
+            'nullable',
+            Rule::exists('users', 'id')->where(function ($query) {
+                $query->where('role', 'kasir');
+            }),
+        ],
+    ]);
+
+    $search = trim($request->input('search', ''));
+    $kasirId = $request->input('kasir_id');
+
+    // DATA KASIR UNTUK FILTER
+    $kasirs = User::where('role', 'kasir')
+        ->orderBy('name')
+        ->get(['id', 'name']);
+
+    // QUERY UTAMA: SATU BARIS UNTUK SATU INVOICE
+    $query = Transaction::with([
+        'customer',
+        'user',
+    ]);
+
+    // FILTER TANGGAL
     if ($request->filled('tanggal_mulai')) {
         $query->whereDate(
             'tanggal_transaksi',
@@ -761,7 +1180,6 @@ foreach ($normalizedCart as $productId => $quantity) {
         );
     }
 
-    // Filter tanggal akhir
     if ($request->filled('tanggal_akhir')) {
         $query->whereDate(
             'tanggal_transaksi',
@@ -770,257 +1188,337 @@ foreach ($normalizedCart as $productId => $quantity) {
         );
     }
 
-    $transactions = $query->get();
-
-    $totalTransaksi = $transactions->count();
-
-    $totalRetur = $this->hitungTotalRetur($request);
-    $totalPenjualan = $transactions->sum('total_akhir') - $totalRetur;
-
-    $totalDibayar = $transactions->sum('jumlah_bayar');
-
-    $totalPiutang = $transactions->sum(function ($transaction) {
-        return max(
-            $transaction->total_akhir - $transaction->jumlah_bayar,
-            0
-        );
-    });
-
-    $pdf = Pdf::loadView(
-        'owner.laporan.pdf.pendapatan',
-        compact(
-            'transactions',
-            'totalTransaksi',
-            'totalPenjualan',
-            'totalDibayar',
-            'totalPiutang',
-            'totalRetur'
-        )
-    );
-
-    $pdf->setPaper('A4', 'landscape');
-
-    return $pdf->download(
-        'laporan-pendapatan.pdf'
-    );
+    // FILTER KASIR
+    if ($kasirId) {
+        $query->where('dibuat_oleh', $kasirId);
     }
 
-    // LAPORAN PENJUALAN
-    
-
-public function laporanPenjualan(Request $request)
-{
-    $search = trim($request->input('search', ''));
-
-    // DETAIL PENJUALAN
-    $query = TransactionDetail::with([
-        'transaction',
-        'product.category',
-    ])->whereHas('transaction', function ($q) use ($request) {
-        if ($request->filled('tanggal_mulai')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '>=',
-                $request->tanggal_mulai
-            );
-        }
-
-        if ($request->filled('tanggal_akhir')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '<=',
-                $request->tanggal_akhir
-            );
-        }
-    });
-
-    // Cari berdasarkan invoice ATAU nama produk
+    // PENCARIAN INVOICE ATAU NAMA PRODUK
     if ($search !== '') {
         $query->where(function ($q) use ($search) {
-            $q->whereHas('transaction', function ($t) use ($search) {
-                $t->where(
-                    'nomor_invoice',
-                    'like',
-                    '%' . $search . '%'
-                );
-            })->orWhereHas('product', function ($p) use ($search) {
-                $p->where(
-                    'nama',
-                    'like',
-                    '%' . $search . '%'
-                );
-            });
+            $q->where('nomor_invoice', 'like', "%{$search}%")
+                ->orWhereHas('details.product', function ($product) use ($search) {
+                    $product->where('nama', 'like', "%{$search}%");
+                });
         });
     }
 
-    $totalTransaksi = (clone $query)
-        ->distinct()
-        ->count('transaksi_id');
+    // AMBIL ID TRANSAKSI YANG SESUAI FILTER
+    $transactionIds = (clone $query)->pluck('id');
 
-    $totalProdukTerjual = (clone $query)->sum('quantity');
-
-    $totalPenjualanKotor = (float) (clone $query)->sum('subtotal');
-
-    $details = (clone $query)
-        ->latest()
+    // DATA TABEL UTAMA: PER INVOICE
+    $transactions = (clone $query)
+        ->latest('tanggal_transaksi')
         ->paginate(10)
         ->withQueryString();
 
-    // DETAIL RETUR PENJUALAN
-    $queryRetur = SalesReturnDetail::with([
-        'salesReturn.transaction',
-        'product',
-    ])->whereHas('salesReturn.transaction', function ($q) use ($request) {
-        if ($request->filled('tanggal_mulai')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '>=',
-                $request->tanggal_mulai
-            );
-        }
-
-        if ($request->filled('tanggal_akhir')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '<=',
-                $request->tanggal_akhir
-            );
-        }
-    });
-
-    // Pencarian yang sama juga berlaku untuk retur
-    if ($search !== '') {
-        $queryRetur->where(function ($q) use ($search) {
-            $q->whereHas('salesReturn.transaction', function ($t) use ($search) {
-                $t->where(
-                    'nomor_invoice',
-                    'like',
-                    '%' . $search . '%'
-                );
-            })->orWhereHas('product', function ($p) use ($search) {
-                $p->where(
-                    'nama',
-                    'like',
-                    '%' . $search . '%'
-                );
-            });
-        });
-    }
-
-    $returns = (clone $queryRetur)
-        ->latest('created_at')
+    // AMBIL DETAIL PRODUK UNTUK PERHITUNGAN RINGKASAN
+    $semuaDetail = TransactionDetail::with([
+        'transaction',
+    ])
+        ->whereIn('transaksi_id', $transactionIds)
         ->get();
 
-    $totalRetur = (float) (clone $queryRetur)->sum('subtotal');
+    // AMBIL DATA RETUR DARI TRANSAKSI YANG SAMA
+    $returns = SalesReturnDetail::with([
+        'salesReturn.transaction.user',
+        'transactionDetail.transaction',
+        'product',
+    ])
+        ->whereHas('salesReturn', function ($q) use ($transactionIds) {
+            $q->whereIn('transaksi_id', $transactionIds);
+        })
+        ->get();
 
-    $totalPenjualanBersih =
-        $totalPenjualanKotor - $totalRetur;
+    // HITUNG RINGKASAN
+    // Tetap menggunakan helper yang sudah ada.
+    $ringkasan = $this->hitungRingkasanPenjualan(
+        $semuaDetail,
+        $returns
+    );
 
-    return view('owner.laporan.penjualan', compact(
-        'details',
-        'totalTransaksi',
-        'totalProdukTerjual',
-        'totalPenjualanKotor',
-        'totalRetur',
-        'totalPenjualanBersih',
-        'returns'
+    return view('owner.laporan.penjualan', [
+        'transactions' => $transactions,
+        'kasirs' => $kasirs,
+        'kasirId' => $kasirId,
+        'returns' => $returns,
+        'ringkasan' => $ringkasan,
+
+        // VARIABEL KARTU RINGKASAN
+        'totalTransaksi' => $ringkasan['totalTransaksi'],
+        'totalProdukTerjual' => $ringkasan['totalProdukTerjual'],
+        'totalPenjualanKotor' => $ringkasan['totalPenjualanKotor'],
+        'totalDiskon' => $ringkasan['totalDiskon'],
+        'totalRetur' => $ringkasan['totalRetur'],
+        'totalPenjualanBersih' => $ringkasan['totalPenjualanBersih'],
+    ]);
+}
+
+public function detailLaporanPenjualan($id)
+{
+    // AMBIL DATA TRANSAKSI DAN DETAIL PRODUK
+    $transaction = Transaction::with([
+        'customer',
+        'user',
+        'details.product.category',
+    ])->findOrFail($id);
+
+    // AMBIL DATA RETUR DARI INVOICE TERSEBUT
+    $returns = SalesReturnDetail::with([
+        'salesReturn',
+        'product',
+        'transactionDetail',
+    ])
+        ->whereHas('salesReturn', function ($query) use ($transaction) {
+            $query->where('transaksi_id', $transaction->id);
+        })
+        ->get();
+
+    // HITUNG TOTAL TRANSAKSI
+    $total = (float) $transaction->total_akhir;
+    $dibayar = (float) $transaction->jumlah_bayar;
+    $sisa = max($total - $dibayar, 0);
+
+    return view('owner.laporan.detail-penjualan', compact(
+        'transaction',
+        'returns',
+        'total',
+        'dibayar',
+        'sisa'
     ));
 }
 
 
+// LAPORAN PENJUALAN PDF
 
-    // CETAK PDF LAPORAN PENJUALAN
-    
 public function laporanPenjualanPdf(Request $request)
 {
-    $query = TransactionDetail::with([
+    // VALIDASI FILTER
+    $request->validate([
+        'search' => ['nullable', 'string', 'max:255'],
+        'tanggal_mulai' => ['nullable', 'date'],
+        'tanggal_akhir' => [
+            'nullable',
+            'date',
+            'after_or_equal:tanggal_mulai',
+        ],
+        'kasir_id' => [
+            'nullable',
+            Rule::exists('users', 'id')->where(function ($query) {
+                $query->where('role', 'kasir');
+            }),
+        ],
+    ]);
+
+    $search = trim($request->input('search', ''));
+    $kasirId = $request->input('kasir_id');
+
+    // QUERY TRANSAKSI: SATU BARIS UNTUK SATU INVOICE
+    $query = Transaction::with([
+        'customer',
+        'user',
+    ]);
+
+    // FILTER TANGGAL
+    if ($request->filled('tanggal_mulai')) {
+        $query->whereDate(
+            'tanggal_transaksi',
+            '>=',
+            $request->tanggal_mulai
+        );
+    }
+
+    if ($request->filled('tanggal_akhir')) {
+        $query->whereDate(
+            'tanggal_transaksi',
+            '<=',
+            $request->tanggal_akhir
+        );
+    }
+
+    // FILTER KASIR
+    if ($kasirId) {
+        $query->where('dibuat_oleh', $kasirId);
+    }
+
+    // PENCARIAN NOMOR INVOICE ATAU NAMA PRODUK
+    if ($search !== '') {
+        $query->where(function ($q) use ($search) {
+            $q->where('nomor_invoice', 'like', "%{$search}%")
+                ->orWhereHas('details.product', function ($product) use ($search) {
+                    $product->where('nama', 'like', "%{$search}%");
+                });
+        });
+    }
+
+    // AMBIL SEMUA TRANSAKSI SESUAI FILTER
+    $transactions = (clone $query)
+        ->orderBy('tanggal_transaksi', 'desc')
+        ->get();
+
+    $transactionIds = $transactions->pluck('id');
+
+    // DETAIL PRODUK UNTUK PERHITUNGAN RINGKASAN
+    $details = TransactionDetail::with([
         'transaction',
-        'product.category',
-    ])->whereHas('transaction', function ($q) use ($request) {
+    ])
+        ->whereIn('transaksi_id', $transactionIds)
+        ->get();
 
-        if ($request->filled('tanggal_mulai')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '>=',
-                $request->tanggal_mulai
-            );
-        }
+    // DATA RETUR DARI TRANSAKSI YANG SAMA
+    $returns = SalesReturnDetail::with([
+        'salesReturn.transaction.user',
+        'transactionDetail.transaction',
+        'product',
+    ])
+        ->whereHas('salesReturn', function ($q) use ($transactionIds) {
+            $q->whereIn('transaksi_id', $transactionIds);
+        })
+        ->get();
 
-        if ($request->filled('tanggal_akhir')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '<=',
-                $request->tanggal_akhir
-            );
-        }
-    });
+    // HITUNG RINGKASAN MENGGUNAKAN HELPER YANG SUDAH ADA
+    $ringkasan = $this->hitungRingkasanPenjualan(
+        $details,
+        $returns
+    );
 
-    $details = $query->latest()->get();
+    // SIAPKAN DATA PDF
+    $data = [
+        'transactions' => $transactions,
+        'details' => $details,
+        'returns' => $returns,
+        'search' => $search,
+        'tanggalMulai' => $request->tanggal_mulai,
+        'tanggalAkhir' => $request->tanggal_akhir,
+        'kasirId' => $kasirId,
 
+        'totalTransaksi' => $ringkasan['totalTransaksi'],
+        'totalProdukTerjual' => $ringkasan['totalProdukTerjual'],
+        'totalPenjualanKotor' => $ringkasan['totalPenjualanKotor'],
+        'totalDiskon' => $ringkasan['totalDiskon'],
+        'totalRetur' => $ringkasan['totalRetur'],
+        'totalPenjualanBersih' => $ringkasan['totalPenjualanBersih'],
+    ];
+
+    $pdf = Pdf::loadView(
+        'owner.laporan.pdf.penjualan',
+        $data
+    )->setPaper('a4', 'landscape');
+
+    return $pdf->download('laporan-penjualan-pendapatan.pdf');
+}
+
+
+
+
+// FUNGSI BANTU PERHITUNGAN RINGKASAN LAPORAN PENJUALAN
+
+private function hitungRingkasanPenjualan(
+    Collection $details, 
+    Collection $returns): array
+{
+    // JUMLAH TRANSAKSI
     $totalTransaksi = $details
         ->pluck('transaksi_id')
         ->unique()
         ->count();
 
-    $totalProdukTerjual = $details->sum('quantity');
+    // JUMLAH PRODUK TERJUAL
+    $totalProdukTerjual = (int) $details->sum('quantity');
 
+    // TOTAL PENJUALAN KOTOR
     $totalPenjualanKotor = (float) $details->sum('subtotal');
 
-    // Retur dikelompokkan menurut tanggal transaksi asal.
-    $queryRetur = SalesReturnDetail::with([
-        'salesReturn.transaction',
-        'product',
-    ])->whereHas('salesReturn.transaction', function ($q) use ($request) {
+    // TOTAL DISKON YANG DIALOKASIKAN KE PRODUK
+    $totalDiskon = (float) $details->sum(function ($detail) {
+        $transaksi = $detail->transaction;
 
-        if ($request->filled('tanggal_mulai')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '>=',
-                $request->tanggal_mulai
-            );
+        if (!$transaksi || (float) $transaksi->total <= 0) {
+            return 0;
         }
 
-        if ($request->filled('tanggal_akhir')) {
-            $q->whereDate(
-                'tanggal_transaksi',
-                '<=',
-                $request->tanggal_akhir
-            );
-        }
+        $diskonTransaksi = (float) $transaksi->diskon;
+        $subtotalProduk = (float) $detail->subtotal;
+        $totalTransaksi = (float) $transaksi->total;
+
+        return round(
+            $diskonTransaksi * ($subtotalProduk / $totalTransaksi),
+            2
+        );
     });
 
-    $returns = $queryRetur->latest('created_at')->get();
+    // TOTAL RETUR KOTOR
+    $totalReturKotor = (float) $returns->sum('subtotal');
 
-    $totalRetur = (float) $returns->sum('subtotal');
+    // DISKON YANG MENJADI BAGIAN DARI BARANG YANG DIRETUR
+    $totalDiskonRetur = (float) $returns->sum(function ($retur) {
+        $detailAsli = $retur->transactionDetail;
 
-    $totalPenjualanBersih = $totalPenjualanKotor - $totalRetur;
+        if (!$detailAsli) {
+            return 0;
+        }
 
-    $pdf = Pdf::loadView(
-        'owner.laporan.pdf.penjualan',
-        compact(
-            'details',
-            'totalTransaksi',
-            'totalProdukTerjual',
-            'totalPenjualanKotor',
-            'totalRetur',
-            'totalPenjualanBersih',
-            'returns'
-        )
+        $transaksi = $detailAsli->transaction;
+
+        if (
+            !$transaksi ||
+            (float) $transaksi->total <= 0 ||
+            (int) $detailAsli->quantity <= 0
+        ) {
+            return 0;
+        }
+
+        // Bagian diskon untuk satu baris produk pada transaksi asli
+        $diskonProduk = (float) $transaksi->diskon
+            * (
+                (float) $detailAsli->subtotal
+                / (float) $transaksi->total
+            );
+
+        // Bagian diskon sesuai jumlah barang yang diretur
+        $diskonRetur = $diskonProduk
+            * (
+                (int) $retur->quantity
+                / (int) $detailAsli->quantity
+            );
+
+        return round($diskonRetur, 2);
+    });
+
+    // NILAI RETUR SETELAH DIKURANGI ALOKASI DISKON
+    $totalRetur = round(
+        $totalReturKotor - $totalDiskonRetur,
+        2
     );
 
-    $pdf->setPaper('A4', 'landscape');
+    // PENJUALAN BERSIH
+    $totalPenjualanBersih = round(
+        $totalPenjualanKotor
+        - $totalDiskon
+        - $totalReturKotor
+        + $totalDiskonRetur,
+        2
+    );
 
-    return $pdf->download('laporan-penjualan.pdf');
+    return [
+        'totalTransaksi' => $totalTransaksi,
+        'totalProdukTerjual' => $totalProdukTerjual,
+        'totalPenjualanKotor' => round($totalPenjualanKotor, 2),
+        'totalDiskon' => round($totalDiskon, 2),
+        'totalReturKotor' => round($totalReturKotor, 2),
+        'totalDiskonRetur' => round($totalDiskonRetur, 2),
+        'totalRetur' => $totalRetur,
+        'totalPenjualanBersih' => $totalPenjualanBersih,
+    ];
 }
 
-    
 /**
- * Menghitung total nilai retur berdasarkan tanggal transaksi asal.
+ * Menghitung total retur berdasarkan tanggal transaksi asli.
  */
 private function hitungTotalRetur(Request $request): float
 {
     $query = SalesReturnDetail::whereHas(
-        'salesReturn.transaction',
+        'salesReturn.transaction.user',
         function ($q) use ($request) {
 
             if ($request->filled('tanggal_mulai')) {

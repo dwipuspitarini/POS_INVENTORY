@@ -77,6 +77,10 @@ class SalesReturnController extends Controller
                 'exists:transactions,id',
             ],
             'keterangan' => ['nullable', 'string', 'max:1000'],
+            'metode_pengembalian' => [
+                'required',
+                'in:tunai,qris,edc',
+            ],
             'items' => ['required', 'array'],
             'items.*.quantity' => [
                 'nullable',
@@ -118,6 +122,7 @@ class SalesReturnController extends Controller
 
             $returnDetails = [];
             $productIds = [];
+            $totalPengembalian = 0;
 
             /*
              * Validasi detail transaksi dan sisa retur.
@@ -166,6 +171,29 @@ class SalesReturnController extends Controller
                     'alasan' => $item['alasan'] ?? null,
                 ];
 
+                // Hitung bagian diskon yang dialokasikan ke produk.
+$subtotalRetur = (float) $detail->harga * $quantity;
+
+$diskonRetur = 0;
+
+if ((float) $transaction->total > 0 && (int) $detail->quantity > 0) {
+
+    $diskonProduk = (float) $transaction->diskon
+        * ((float) $detail->subtotal / (float) $transaction->total);
+
+    $diskonRetur = $diskonProduk
+        * ($quantity / (int) $detail->quantity);
+}
+
+// Bulatkan bagian diskon untuk barang yang diretur.
+$diskonRetur = round($diskonRetur, 2);
+
+// Tambahkan nilai pengembalian setelah diskon.
+$totalPengembalian += max(
+    $subtotalRetur - $diskonRetur,
+    0
+);
+
                 $productIds[] = $detail->product_id;
             }
 
@@ -201,6 +229,8 @@ class SalesReturnController extends Controller
                 'transaksi_id' => $transaction->id,
                 'user_id' => Auth::id(),
                 'tanggal_retur' => now(),
+                'jumlah_pengembalian' => round($totalPengembalian, 2),
+                'metode_pengembalian' => $validated['metode_pengembalian'],
                 'keterangan' => $validated['keterangan'] ?? null,
             ]);
 

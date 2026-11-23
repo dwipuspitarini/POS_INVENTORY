@@ -86,11 +86,11 @@
     </div>
 
     {{-- =========================
-        PILIH PRODUK
+        TAMBAH PRODUK (SAMA SEPERTI TRANSAKSI)
     ========================== --}}
     <div class="form-card mb-20">
         <div class="section-title mb-4">
-            Tambahkan Produk
+            Tambah Produk
         </div>
 
         <div class="form-group mb-0">
@@ -98,19 +98,19 @@
                 Cari Produk
             </label>
 
-            <div class="product-search-wrapper">
-                <div class="product-search-box">
+            <div class="custom-search-wrapper" id="product-search-wrapper">
+                <div class="search-input-box">
                     <span class="search-icon">🔍</span>
                     <input
                         type="text"
                         id="product-search"
                         class="form-control"
-                        placeholder="Ketik nama produk atau kategori..."
+                        placeholder="Ketik SKU atau nama produk untuk langsung menambahkan ke daftar..."
                         autocomplete="off"
                     >
                 </div>
 
-                <div id="product-results" class="product-results"></div>
+                <div id="product-results" class="custom-dropdown-results"></div>
             </div>
         </div>
     </div>
@@ -129,7 +129,7 @@
                     <thead>
                         <tr>
                             <th style="width: 55px;">No</th>
-                            <th style="min-width: 200px;">Produk</th>
+                            <th style="min-width: 220px;">Produk</th>
                             <th style="min-width: 140px;">Kategori</th>
                             <th style="width: 130px; text-align: center;">Stok Saat Ini</th>
                             <th style="width: 150px; text-align: center;">Jumlah Masuk</th>
@@ -288,15 +288,15 @@
    SUPPLIER & PRODUCT SEARCH DROPDOWNS
 ========================================================= */
 .supplier-search-wrapper,
-.product-search-wrapper {
+.custom-search-wrapper {
     position: relative;
 }
 
-.product-search-box {
+.search-input-box {
     position: relative;
 }
 
-.product-search-box .form-control {
+.search-input-box .form-control {
     padding-left: 42px;
     height: 44px;
 }
@@ -313,7 +313,7 @@
 }
 
 .supplier-results,
-.product-results {
+.custom-dropdown-results {
     position: absolute;
     top: calc(100% + 5px);
     left: 0;
@@ -322,47 +322,40 @@
     border: 1px solid #d1d5db;
     border-radius: 8px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    max-height: 260px;
+    max-height: 270px;
     overflow-y: auto;
     z-index: 200;
     display: none;
 }
 
 .supplier-result-item,
-.product-result-item {
+.dropdown-result-item {
     padding: 12px 16px;
     cursor: pointer;
     border-bottom: 1px solid #f3f4f6;
-    font-size: 15px;
     transition: background 0.12s ease;
 }
 
 .supplier-result-item:last-child,
-.product-result-item:last-child {
+.dropdown-result-item:last-child {
     border-bottom: none;
 }
 
 .supplier-result-item:hover,
-.product-result-item:hover {
+.dropdown-result-item:hover {
     background: #f3f4f6;
 }
 
-.product-result-name {
+.result-title {
     font-weight: 600;
+    font-size: 15px;
     color: #1f2937;
-    margin-bottom: 4px;
 }
 
-.product-result-info {
+.result-sub {
     font-size: 13px;
     color: #6b7280;
-}
-
-.no-product-result {
-    padding: 16px;
-    text-align: center;
-    font-size: 14px;
-    color: #6b7280;
+    margin-top: 3px;
 }
 
 /* =========================================================
@@ -479,6 +472,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const hiddenTanggalStok = document.getElementById('hidden-tanggal-stok');
     const hiddenKeterangan = document.getElementById('hidden-keterangan');
 
+    function formatRupiah(number) {
+        return 'Rp ' + new Intl.NumberFormat('id-ID').format(number || 0);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | SINKRONISASI WAKTU LOKAL AKURAT
@@ -498,7 +495,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     setLocalDateTimeNow();
-    setInterval(setLocalDateTimeNow, 15000); // Update otomatis tiap 15 detik selama tidak diubah manual
+    setInterval(setLocalDateTimeNow, 15000);
 
     tanggalStok.addEventListener('change', function () {
         isManualDate = true;
@@ -556,40 +553,56 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /*
     |--------------------------------------------------------------------------
-    | SEARCH PRODUK
+    | SEARCH PRODUK (TAMPILAN IDENTIK DENGAN HALAMAN TRANSAKSI)
     |--------------------------------------------------------------------------
     */
     productSearch.addEventListener('input', function () {
-        const keyword = this.value.toLowerCase().trim();
+        const keyword = this.value.trim().toLowerCase();
         productResults.innerHTML = '';
 
-        if (keyword === '') {
+        if (!keyword) {
             productResults.style.display = 'none';
             return;
         }
 
-        const results = products.filter(product => {
-            const alreadyAdded = cart.some(item => item.product_id == product.id);
-            if (alreadyAdded) return false;
+        const results = products.filter(function (product) {
+            const sku = (product.sku ?? '').toLowerCase();
+            const nama = (product.nama ?? '').toLowerCase();
+            const kategori = (product.kategori ?? '').toLowerCase();
 
             return (
-                product.nama.toLowerCase().includes(keyword) ||
-                product.kategori.toLowerCase().includes(keyword)
+                sku.includes(keyword) ||
+                nama.includes(keyword) ||
+                kategori.includes(keyword)
             );
         });
 
         if (results.length === 0) {
-            productResults.innerHTML = `<div class="no-product-result">Produk tidak ditemukan atau sudah ditambahkan.</div>`;
+            productResults.innerHTML = `
+                <div style="padding: 14px 16px; color: #6b7280; font-size: 14px; text-align: center;">
+                    Produk tidak ditemukan.
+                </div>
+            `;
             productResults.style.display = 'block';
             return;
         }
 
-        results.forEach(product => {
+        results.forEach(function (product) {
+            const stokProduk = parseInt(product.stok ?? 0, 10);
+            const hargaVal = product.harga_jual ?? product.harga_beli ?? product.harga ?? null;
+            const subPrefix = hargaVal !== null
+                ? formatRupiah(parseFloat(hargaVal))
+                : escapeHtml(product.kategori ?? '-');
+
             const item = document.createElement('div');
-            item.className = 'product-result-item';
+            item.className = 'dropdown-result-item';
             item.innerHTML = `
-                <div class="product-result-name">${escapeHtml(product.nama)}</div>
-                <div class="product-result-info">${escapeHtml(product.kategori)} · Stok saat ini: ${product.stok}</div>
+                <div class="result-title">
+                    ${product.sku ? escapeHtml(product.sku) + ' — ' : ''}${escapeHtml(product.nama)}
+                </div>
+                <div class="result-sub">
+                    ${subPrefix} · Stok tersedia: <strong>${stokProduk}</strong>
+                </div>
             `;
 
             item.addEventListener('click', function () {
@@ -604,7 +617,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /*
     |--------------------------------------------------------------------------
-    | TAMBAH PRODUK (OTOMATIS FOKUS KEMBALI KE SEARCH)
+    | TAMBAH PRODUK (OTOMATIS TAMBAH QTY JIKA SUDAH ADA DI TABEL)
     |--------------------------------------------------------------------------
     */
     function addProduct(product) {
@@ -615,9 +628,10 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
             cart.push({
                 product_id: product.id,
+                sku: product.sku ?? '-',
                 nama: product.nama,
-                kategori: product.kategori,
-                stok: Number(product.stok),
+                kategori: product.kategori ?? '-',
+                stok: Number(product.stok ?? 0),
                 jumlah: 1
             });
         }
@@ -626,8 +640,6 @@ document.addEventListener('DOMContentLoaded', function () {
         productResults.style.display = 'none';
 
         renderCart();
-
-        // Langsung arahkan kursor kembali ke kolom search produk
         productSearch.focus();
     }
 
@@ -654,7 +666,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${index + 1}</td>
-                <td><strong>${escapeHtml(item.nama)}</strong></td>
+                <td>
+                    <strong>${escapeHtml(item.nama)}</strong>
+                    <div style="font-size: 13px; color: #6b7280; margin-top: 3px;">
+                        SKU: ${escapeHtml(item.sku)}
+                    </div>
+                </td>
                 <td>${escapeHtml(item.kategori)}</td>
                 <td style="text-align: center;">${item.stok}</td>
                 <td style="text-align: center;">
@@ -690,12 +707,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /*
     |--------------------------------------------------------------------------
-    | EVENT CART (TANPA MENGHILANGKAN FOKUS INPUT ANGKA)
+    | EVENT CART (AUTO-BLOCK ANGKA & UPDATE REAL-TIME)
     |--------------------------------------------------------------------------
     */
     function bindCartEvents() {
         document.querySelectorAll('.stock-quantity-input').forEach(input => {
-            // Update angka stok setelah secara langsung tanpa render ulang tabel
+            input.addEventListener('focus', function () {
+                this.select();
+            });
+
+            input.addEventListener('mouseup', function (e) {
+                e.preventDefault();
+            });
+
             input.addEventListener('input', function () {
                 const index = Number(this.dataset.index);
                 const rawVal = this.value;
@@ -710,7 +734,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             });
 
-            // Jika dikosongkan lalu ditinggalkan (blur), kembalikan ke minimal 1
             input.addEventListener('blur', function () {
                 const index = Number(this.dataset.index);
                 let value = parseInt(this.value, 10);
@@ -761,7 +784,6 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        // Pastikan tidak ada item dengan jumlah < 1
         const invalidItem = cart.find(item => item.jumlah < 1);
         if (invalidItem) {
             alert(`Jumlah masuk untuk produk "${invalidItem.nama}" minimal 1.`);
@@ -796,7 +818,7 @@ document.addEventListener('DOMContentLoaded', function () {
             supplierResults.style.display = 'none';
         }
 
-        if (!event.target.closest('.product-search-wrapper')) {
+        if (!event.target.closest('#product-search-wrapper')) {
             productResults.style.display = 'none';
         }
     });

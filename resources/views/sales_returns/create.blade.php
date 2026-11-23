@@ -1,3 +1,4 @@
+
 @extends('layouts.app')
 
 @section('title', 'Retur Penjualan')
@@ -6,9 +7,7 @@
 @section('content')
 <div class="container-fluid sales-return-page">
 
-    {{-- =========================================================
-         HEADER
-    ========================================================== --}}
+    {{-- HEADER --}}
     <div class="page-header d-flex justify-content-between align-items-center flex-wrap mb-4" style="gap: 12px;">
         <div>
             <h1 style="font-size: 26px; font-weight: 700; color: #1f2937; margin-bottom: 6px;">
@@ -24,9 +23,7 @@
         </a>
     </div>
 
-    {{-- =========================================================
-         ERROR VALIDASI
-    ========================================================== --}}
+    {{-- ERROR VALIDASI --}}
     @if ($errors->any())
         <div class="alert alert-danger mb-4" style="border-radius: 8px; font-size: 15px;">
             <strong>Periksa kembali data retur:</strong>
@@ -39,9 +36,8 @@
     @endif
 
     @if ($transaction)
-        {{-- =========================================================
-             INFORMASI INVOICE (PERMANEN)
-        ========================================================== --}}
+
+        {{-- INFORMASI INVOICE --}}
         <div class="form-card mb-20">
             <div class="section-title mb-4">
                 Informasi Transaksi Asal
@@ -80,11 +76,10 @@
             </div>
         </div>
 
-        {{-- =========================================================
-             FORM RETUR BARANG
-        ========================================================== --}}
+        {{-- FORM RETUR --}}
         <form method="POST" action="{{ route('sales-returns.store') }}">
             @csrf
+
             <input type="hidden" name="transaksi_id" value="{{ $transaction->id }}">
 
             <div class="table-card mb-20">
@@ -114,7 +109,10 @@
                                         <td>{{ $index + 1 }}</td>
 
                                         <td>
-                                            <strong>{{ $detail->product->nama ?? 'Produk tidak ditemukan' }}</strong>
+                                            <strong>
+                                                {{ $detail->product->nama ?? 'Produk tidak ditemukan' }}
+                                            </strong>
+
                                             @if($detail->product && $detail->product->sku)
                                                 <div style="font-size: 13px; color: #6b7280; margin-top: 2px;">
                                                     SKU: {{ $detail->product->sku }}
@@ -145,6 +143,11 @@
                                                 max="{{ $detail->sisa_retur }}"
                                                 step="1"
                                                 value="{{ old('items.' . $detail->id . '.quantity', 0) }}"
+                                                data-harga="{{ $detail->harga }}"
+                                                data-subtotal="{{ $detail->subtotal }}"
+                                                data-jumlah-beli="{{ $detail->quantity }}"
+                                                data-total-transaksi="{{ $transaction->total }}"
+                                                data-diskon-transaksi="{{ $transaction->diskon }}"
                                                 @disabled($detail->sisa_retur <= 0)
                                                 title="Maksimal retur: {{ $detail->sisa_retur }}"
                                                 aria-label="Jumlah retur {{ $detail->product->nama ?? 'produk' }}"
@@ -158,9 +161,11 @@
                                                 @disabled($detail->sisa_retur <= 0)
                                             >
                                                 <option value="">Pilih</option>
+
                                                 <option value="layak" @selected(old('items.' . $detail->id . '.kondisi') === 'layak')>
                                                     Layak jual
                                                 </option>
+
                                                 <option value="rusak" @selected(old('items.' . $detail->id . '.kondisi') === 'rusak')>
                                                     Rusak
                                                 </option>
@@ -179,6 +184,7 @@
                                             >
                                         </td>
                                     </tr>
+
                                 @empty
                                     <tr>
                                         <td colspan="8" class="empty-data">
@@ -192,14 +198,62 @@
                 </div>
             </div>
 
-            {{-- =========================================================
-                 KETERANGAN & TOMBOL AKSI
-            ========================================================== --}}
+            {{-- CATATAN DAN KONFIRMASI --}}
             <div class="form-card">
+
                 <div class="section-title mb-4">
                     Catatan & Konfirmasi
                 </div>
 
+                {{-- METODE PENGEMBALIAN --}}
+                <div class="form-group">
+                    <label for="metode_pengembalian" class="form-label">
+                        Metode Pengembalian Uang
+                    </label>
+
+                    <select
+                        name="metode_pengembalian"
+                        id="metode_pengembalian"
+                        class="form-control"
+                        required
+                    >
+                        <option value="">Pilih Metode Pengembalian</option>
+
+                        <option value="tunai" @selected(old('metode_pengembalian') === 'tunai')>
+                            Tunai
+                        </option>
+
+                        <option value="qris" @selected(old('metode_pengembalian') === 'qris')>
+                            QRIS
+                        </option>
+
+                        <option value="edc" @selected(old('metode_pengembalian') === 'edc')>
+                            EDC
+                        </option>
+                    </select>
+                </div>
+
+                {{-- ESTIMASI PENGEMBALIAN --}}
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px; margin-bottom: 20px;">
+
+                    <div style="font-size: 14px; color: #6b7280; margin-bottom: 6px;">
+                        Estimasi Uang Dikembalikan
+                    </div>
+
+                    <div
+                        id="estimasi-pengembalian"
+                        style="font-size: 24px; font-weight: 700; color: #1f2937;"
+                    >
+                        Rp 0
+                    </div>
+
+                    <small style="color: #6b7280;">
+                        Nominal dihitung berdasarkan jumlah barang yang diretur
+                        setelah dikurangi alokasi diskon transaksi.
+                    </small>
+                </div>
+
+                {{-- KETERANGAN --}}
                 <div class="form-group">
                     <label for="keterangan" class="form-label">
                         Keterangan Retur (Opsional)
@@ -215,7 +269,9 @@
                     >{{ old('keterangan') }}</textarea>
                 </div>
 
+                {{-- TOMBOL --}}
                 <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+
                     <a href="{{ route('transactions.index') }}" class="btn btn-secondary">
                         Batal
                     </a>
@@ -223,23 +279,28 @@
                     <button
                         type="submit"
                         class="btn btn-danger"
-                        onclick="return confirm('Simpan retur untuk invoice {{ $transaction->nomor_invoice }}? Pastikan jumlah dan kondisi barang sudah benar.')"
+                        onclick="return confirm('Simpan retur untuk invoice {{ $transaction->nomor_invoice }}? Pastikan jumlah, kondisi, dan metode pengembalian uang sudah benar.')"
                     >
                         Simpan Retur
                     </button>
+
                 </div>
             </div>
         </form>
+
     @else
-        {{-- FALLBACK JIKA DIAKSES TANPA MEMILIH INVOICE DARI DAFTAR TRANSAKSI --}}
+
+        {{-- FALLBACK --}}
         <div class="form-card" style="text-align: center; padding: 48px 24px;">
             <p style="font-size: 16px; color: #4b5563; margin-bottom: 16px;">
                 Data invoice tidak ditemukan. Silakan pilih transaksi terlebih dahulu melalui halaman Daftar Transaksi.
             </p>
+
             <a href="{{ route('transactions.index') }}" class="btn btn-primary" style="background: #1f2937; border-color: #1f2937;">
                 Ke Daftar Transaksi
             </a>
         </div>
+
     @endif
 
 </div>
@@ -250,9 +311,7 @@
     margin-bottom: 20px;
 }
 
-/* =========================================================
-   FORM CARD & INVOICE INFO GRID
-========================================================= */
+/* FORM CARD */
 .form-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -268,6 +327,7 @@
     border-bottom: 1px solid #f3f4f6;
 }
 
+/* INFORMASI INVOICE */
 .invoice-info-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -295,6 +355,7 @@
     color: #1f2937;
 }
 
+/* FORM */
 .form-group {
     margin-bottom: 20px;
 }
@@ -331,9 +392,7 @@
     cursor: not-allowed;
 }
 
-/* =========================================================
-   TABLE & FIT-TO-SCREEN LAYOUT (NO HORIZONTAL SCROLL)
-========================================================= */
+/* TABEL */
 .table-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -388,7 +447,6 @@
     color: #9ca3af;
 }
 
-/* Seragamkan font 15px & tinggi semua input dalam sel tabel */
 .table-input {
     height: 42px;
     padding: 8px 10px;
@@ -429,6 +487,7 @@
     color: #6b7280;
 }
 
+/* RESPONSIVE */
 @media (max-width: 992px) {
     .invoice-info-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -446,16 +505,82 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Auto-select angka jumlah retur saat box diklik/fokus agar kasir bisa langsung ketik
+
+    // Memudahkan kasir mengganti jumlah retur.
     document.querySelectorAll('.qty-return-input').forEach(function (input) {
+
         input.addEventListener('focus', function () {
             this.select();
         });
+
         input.addEventListener('mouseup', function (e) {
             e.preventDefault();
         });
+
     });
+
+    const quantityInputs = document.querySelectorAll('.qty-return-input');
+    const estimasiElement = document.getElementById('estimasi-pengembalian');
+
+    // Menghitung estimasi uang yang dikembalikan.
+    function hitungEstimasiPengembalian() {
+
+        let totalPengembalian = 0;
+
+        quantityInputs.forEach(function (input) {
+
+            const quantity = parseInt(input.value) || 0;
+
+            if (quantity <= 0) {
+                return;
+            }
+
+            const harga = parseFloat(input.dataset.harga) || 0;
+            const subtotal = parseFloat(input.dataset.subtotal) || 0;
+            const jumlahBeli = parseInt(input.dataset.jumlahBeli) || 0;
+            const totalTransaksi = parseFloat(input.dataset.totalTransaksi) || 0;
+            const diskonTransaksi = parseFloat(input.dataset.diskonTransaksi) || 0;
+
+            const subtotalRetur = harga * quantity;
+
+            let diskonRetur = 0;
+
+            if (totalTransaksi > 0 && jumlahBeli > 0) {
+
+                const diskonProduk =
+                    diskonTransaksi * (subtotal / totalTransaksi);
+
+                diskonRetur =
+                    diskonProduk * (quantity / jumlahBeli);
+
+            }
+
+            diskonRetur = Math.round(diskonRetur * 100) / 100;
+
+            totalPengembalian += Math.max(
+                subtotalRetur - diskonRetur,
+                0
+            );
+
+        });
+
+        totalPengembalian = Math.round(totalPengembalian * 100) / 100;
+
+        estimasiElement.textContent = 'Rp ' +
+            totalPengembalian.toLocaleString('id-ID');
+
+    }
+
+    // Perbarui estimasi setiap jumlah barang berubah.
+    quantityInputs.forEach(function (input) {
+        input.addEventListener('input', hitungEstimasiPengembalian);
+    });
+
+    // Hitung juga ketika halaman pertama kali dibuka.
+    hitungEstimasiPengembalian();
+
 });
 </script>
 @endpush
+
 @endsection

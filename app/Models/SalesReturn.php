@@ -13,11 +13,14 @@ class SalesReturn extends Model
         'transaksi_id',
         'user_id',
         'tanggal_retur',
+        'jumlah_pengembalian',
+        'metode_pengembalian',
         'keterangan',
     ];
 
     protected $casts = [
         'tanggal_retur' => 'datetime',
+        'jumlah_pengembalian' => 'decimal:2',
     ];
 
     public function transaction(): BelongsTo

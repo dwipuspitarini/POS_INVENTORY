@@ -27,10 +27,12 @@ class StockMovementController extends Controller
 
         $productData = $products->map(function ($product) {
             return [
-                'id' => $product->id,
-                'nama' => $product->nama,
-                'kategori' => $product->category->nama ?? '-',
-                'stok' => $product->stok,
+                'id'         => $product->id,
+                'sku'        => $product->sku,
+                'nama'       => $product->nama,
+                'kategori'   => $product->category->nama ?? '-',
+                'harga_jual' => $product->harga_jual,
+                'stok'       => $product->stok,
             ];
         })->values();
 

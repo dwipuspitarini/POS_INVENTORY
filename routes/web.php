@@ -69,22 +69,16 @@ Route::middleware(['auth', 'role:owner'])
         // LAPORAN
         // =========================
 
-        // Laporan Pendapatan
-        Route::get('/laporan/pendapatan', [TransactionController::class, 'laporanPendapatan'])
-            ->name('owner.laporan.pendapatan');
-
-        // PDF Pendapatan
-        Route::get('/laporan/pendapatan/pdf', [TransactionController::class, 'laporanPendapatanPdf'])
-            ->name('owner.laporan.pendapatan.pdf');
-
-
-        // Laporan Penjualan
+            // Laporan Penjualan
         Route::get('/laporan/penjualan', [TransactionController::class, 'laporanPenjualan'])
             ->name('owner.laporan.penjualan');
 
         // PDF Penjualan
         Route::get('/laporan/penjualan/pdf', [TransactionController::class, 'laporanPenjualanPdf'])
             ->name('owner.laporan.penjualan.pdf');
+        
+        Route::get('/laporan/penjualan/{id}/detail', [TransactionController::class, 'detailLaporanPenjualan'])
+            ->name('owner.laporan.penjualan.detail');
 
 
         // Laporan Stok
@@ -199,4 +193,12 @@ Route::middleware('auth')
         // Retur Penjualan
         Route::resource('sales-returns', SalesReturnController::class)
             ->only(['index', 'create', 'store', 'show']);
+
+        // Laporan Kasir
+        Route::get('/laporan/kasir', [TransactionController::class, 'laporanKasir'])
+            ->name('laporan.kasir');
+
+        // PDF Laporan Kasir
+        Route::get('/laporan/kasir/pdf', [TransactionController::class, 'laporanKasirPdf'])
+            ->name('laporan.kasir.pdf');
     });

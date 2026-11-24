@@ -131,12 +131,12 @@
         ========================== --}}
         <div class="form-card">
             <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
-                <a href="{{ route('owner.products.index') }}" class="btn btn-secondary">
-                    Batal
-                </a>
                 <button type="submit" class="btn btn-primary" style="background: #1f2937; border-color: #1f2937;">
                     Simpan Produk
                 </button>
+                <a href="{{ route('owner.products.index') }}" class="btn btn-secondary">
+                    Batal
+                </a>
             </div>
         </div>
     </form>

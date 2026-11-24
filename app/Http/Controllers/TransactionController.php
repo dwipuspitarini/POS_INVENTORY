@@ -49,9 +49,13 @@ class TransactionController extends Controller
     {
         $customers = Customer::orderBy('nama')->get();
 
-        $products = Product::where('stok', '>', 0)
-            ->orderBy('nama')
-            ->get();
+        $products = $products = Product::orderBy('nama')->get([
+            'id',
+            'sku',
+            'nama',
+            'harga_jual',
+            'stok',
+        ]);
 
         return view(
             'transactions.create',
@@ -132,14 +136,14 @@ class TransactionController extends Controller
     );
 
     if (
-        $tanggalTransaksi->lt(Carbon::parse('2026-10-01 00:00:00')) ||
-        $tanggalTransaksi->gt(Carbon::parse('2026-10-31 23:59:59'))
+        $tanggalTransaksi->lt(Carbon::parse('2026-11-01 00:00:00')) ||
+        $tanggalTransaksi->gt(Carbon::parse('2026-11-30 23:59:59'))
     ) {
         return back()
             ->withInput()
             ->withErrors([
                 'tanggal_transaksi' =>
-                    'Tanggal transaksi harus berada pada Oktober 2026.',
+                    'Tanggal transaksi harus berada pada November 2026.',
             ]);
     }
 } else {

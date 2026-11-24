@@ -113,8 +113,8 @@
                         name="tanggal_transaksi"
                         class="form-control"
                         value="{{ old('tanggal_transaksi') }}"
-                        min="2026-10-01T00:00"
-                        max="2026-10-31T23:59"
+                        min="2026-11-01T00:00"
+                        max="2026-11-30T23:59"
                         required
                     >
                 </div>
@@ -324,6 +324,18 @@
 
 @push('styles')
 <style>
+.transaction-create-page,
+.transaction-create-page input,
+.transaction-create-page select,
+.transaction-create-page textarea,
+.transaction-create-page button,
+.transaction-create-page .custom-dropdown-results,
+.transaction-create-page .dropdown-result-item,
+.transaction-create-page .result-title,
+.transaction-create-page .result-sub {
+    font-family: inherit;
+}
+
 .transaction-create-page .mb-20 {
     margin-bottom: 20px;
 }
@@ -499,16 +511,38 @@
     background: #f9fafb;
 }
 
+/* PRODUK HABIS */
+.dropdown-result-item.product-out-of-stock {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
+.dropdown-result-item.product-out-of-stock .result-title {
+    color: #9ca3af;
+}
+
+.dropdown-result-item.product-out-of-stock .result-sub {
+    color: #9ca3af;
+}
+
+.dropdown-result-item.product-out-of-stock:hover {
+    background-color: #f3f4f6;
+}
+
 .result-title {
     font-weight: 600;
     font-size: 15px;
     color: #1f2937;
+    line-height: 1.4;
 }
 
 .result-sub {
     font-size: 13px;
     color: #6b7280;
     margin-top: 3px;
+    line-height: 1.4;
 }
 
 /* =========================================================
@@ -682,7 +716,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const day = String(now.getDate()).padStart(2, '0');
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
-        tanggalTransaksiInput.value = `2026-10-${day}T${hours}:${minutes}`;
+        tanggalTransaksiInput.value = `2026-11-${day}T${hours}:${minutes}`;
     }
 
     // =========================
@@ -774,7 +808,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const cartData = document.getElementById('cart-data');
 
     // =========================
-    // PENCARIAN & TAMBAH PRODUK INSTAN
+    // PENCARIAN & TAMBAH PRODUK INSTAN (PRIORITAS STOK TERSEDIA)
     // =========================
     productSearch.addEventListener('input', function () {
         const keyword = this.value.trim().toLowerCase();
@@ -785,12 +819,25 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const results = products.filter(function (product) {
-            return (
-                (product.sku && product.sku.toLowerCase().includes(keyword)) ||
-                (product.nama && product.nama.toLowerCase().includes(keyword))
-            );
-        });
+        const results = products
+            .filter(function (product) {
+                return (
+                    (product.sku && product.sku.toLowerCase().includes(keyword)) ||
+                    (product.nama && product.nama.toLowerCase().includes(keyword))
+                );
+            })
+            .sort(function (a, b) {
+                const stokA = parseInt(a.stok ?? 0, 10) > 0 ? 1 : 0;
+                const stokB = parseInt(b.stok ?? 0, 10) > 0 ? 1 : 0;
+
+                // Prioritaskan produk yang stoknya > 0 di atas, stok habis di bawah
+                if (stokB !== stokA) {
+                    return stokB - stokA;
+                }
+
+                // Jika sama-sama tersedia atau sama-sama habis, urutkan berdasarkan SKU
+                return String(a.sku ?? '').localeCompare(String(b.sku ?? ''));
+            });
 
         if (results.length === 0) {
             productResults.innerHTML = `
@@ -798,6 +845,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     Produk tidak ditemukan.
                 </div>
             `;
+
             productResults.style.display = 'block';
             return;
         }
@@ -805,21 +853,36 @@ document.addEventListener('DOMContentLoaded', function () {
         results.forEach(function (product) {
             const hargaProduk = parseFloat(product.harga_jual ?? product.harga ?? 0);
             const stokProduk = parseInt(product.stok ?? 0, 10);
+            const produkHabis = stokProduk <= 0;
 
             const item = document.createElement('div');
-            item.className = 'dropdown-result-item';
+
+            item.className = produkHabis
+                ? 'dropdown-result-item product-out-of-stock'
+                : 'dropdown-result-item';
+
             item.innerHTML = `
                 <div class="result-title">
                     ${product.sku ? product.sku + ' — ' : ''}${product.nama}
                 </div>
+
                 <div class="result-sub">
-                    ${formatRupiah(hargaProduk)} · Stok tersedia: <strong>${stokProduk}</strong>
+                    ${formatRupiah(hargaProduk)}
+                    ·
+                    ${
+                        produkHabis
+                            ? '<strong>Stok Habis</strong>'
+                            : 'Stok tersedia: <strong>' + stokProduk + '</strong>'
+                    }
                 </div>
             `;
 
-            item.addEventListener('click', function () {
-                addProductInstant(product);
-            });
+            // Produk hanya bisa diklik jika stok masih tersedia
+            if (!produkHabis) {
+                item.addEventListener('click', function () {
+                    addProductInstant(product);
+                });
+            }
 
             productResults.appendChild(item);
         });
@@ -830,6 +893,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function addProductInstant(product) {
         const harga = parseFloat(product.harga_jual ?? product.harga ?? 0);
         const stok = parseInt(product.stok ?? 0, 10);
+        if (stok <= 0) {
+            return;
+        }
 
         const existingProduct = cart.find(item => item.product_id == product.id);
 

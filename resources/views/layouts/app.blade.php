@@ -554,7 +554,7 @@ textarea.form-control {
                 Stok
             </a>
             <a href="{{ route('laporan.kasir') }}">
-                Laporan Penjualan Kasir
+                Laporan Penjualan
             </a>
             
 

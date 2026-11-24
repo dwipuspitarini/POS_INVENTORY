@@ -16,7 +16,7 @@ class StockOpname extends Model
     ];
 
     protected $casts = [
-        'tanggal_opname' => 'date',
+        'tanggal_opname' => 'datetime',
     ];
 
     public function user(): BelongsTo
